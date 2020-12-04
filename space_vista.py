@@ -15,6 +15,7 @@ import pandas as pd
 
 COLOR_NAMES = pd.read_csv("colors.csv", squeeze=True, names=["color"])
 FLIP_Y = np.array([[1, 0], [0, -1]])
+RNG = np.random.default_rng()
 
 # Classes
 
@@ -109,7 +110,6 @@ class CelestialBody:
         self.layer = self.vista.add_celestial_body(self)
         self.center = np.array([self.vista.width // 2, self.vista.height // 2])
 
-
     def screen_to_cart(self, xy):
         """
         Assumes `xy` is an array-like object representing the vector [x, y] in
@@ -158,61 +158,73 @@ class StarField(CelestialBody):
         self.velocity = self.vista.velocity / 3
         hypotenuse = np.ceil(np.sqrt(self.vista.width ** 2 + self.vista.height ** 2))
         self.leeway = (hypotenuse - self.vista.height) // 2
-        # Randomly generate the number of stars we'll start with
-        n_stars = 500
-        # int(
-        #     np.random.triangular(
-        #         np.sqrt(self.vista.total_pixels()) / 8,
-        #         np.sqrt(self.vista.total_pixels()) * 4,
-        #         self.vista.total_pixels() / 8,
-        #     )
-        # )
+        self.fieldsize = self.vista.length * self.velocity * hypotenuse
+        self.star_map = self.let_there_be_light(500)
+        self.n_stars = len(self.star_map)
+        print(f"Star density = {self.n_stars/(self.fieldsize)}")
+
+    def let_there_be_light(self, stars):
+        """
+        Generates a field of stars along the starship's course given either the number
+        of stars or the density.
+        Returns a pd.DataFrame with the starting xy in screen coordinates & rgb colors.
+        """
+        if stars >= 1:
+            n_stars = int(stars)
+        elif 0 <= stars < 1:
+            n_stars = int(self.fieldsize * stars)
+        else:
+            raise ValueError("`stars` must be an integer >= 1 or a float [0,1)")
         print(f"Generating {n_stars} stars…")
         # Create a DataFrame of all the star locations
-        self.stars = pd.DataFrame(
-            np.random.randint(0, self.vista.length * self.velocity, n_stars),
+        star_map = pd.DataFrame(
+            RNG.integers(0, self.vista.length * self.velocity, n_stars, endpoint=True),
             columns=["x"],
         )
-        self.stars["y"] = np.random.randint(
-            -1 * self.leeway, self.vista.height + self.leeway, n_stars
+        star_map["y"] = RNG.integers(
+            -1 * self.leeway, self.vista.height + self.leeway, n_stars, endpoint=True
         )
         # Remove duplicates and get the actual number of stars
-        self.stars.drop_duplicates(inplace=True, ignore_index=True)
-
-        ####################################################################
-        # Copy all stars within self.leeway of the length * velocity limit #
-        # to the -leeway on the x coordinate.                              #
-        # Then rotate the stars by self.vista.rot_matrix                   #
-        ####################################################################
-
-        self.n_stars = len(self.stars)
-        print(
-            f"Star density = {self.n_stars/(self.vista.length*self.velocity*hypotenuse)}"
-        )
+        star_map.drop_duplicates(inplace=True, ignore_index=True)
         # Assign initial color to each star, favoring 'brighter' colors
-        self.stars["rgb"] = (
+        star_map["rgb"] = (
             self.vista.palette.palette.iloc[:, 0]
-            .sample(n=len(self.stars), replace=True)
+            .sample(n=len(star_map), replace=True)
             .reset_index(drop=True)
         )
+        # Create a buffer of stars on the back of the map that duplicate the final
+        # stars on the map so that gaps in the starfield aren't caused by rotations.
+        buffered_zone = self.vista.length * self.velocity - self.leeway
+        buffer = star_map[star_map["x"] > buffered_zone].copy()
+        buffer.iloc[:, 0] = buffer["x"] - buffered_zone + self.leeway
+        star_map.append(buffer, ignore_index=True)
+
+        star_map["xy"] = star_map[["x", "y"]].apply(
+            lambda row: self.cart_to_screen(
+                self.screen_to_cart(np.array(row)) @ self.vista.rot_matrix
+            ),
+            axis=1,
+        )
+        return star_map
 
     def draw(self, image, drawing_frame, frame_n):
         def star_drift(row):
             """A little helper function to combine the 'x' and 'y' columns of
-            self.stars into a single column of vectors [x,y] and then run
+            self.star_map into a single column of vectors [x,y] and then run
             them through the drift."""
-            xy = np.array(row)
+            xy = row.array[0]
             return self.drift(xy, velocity=self.velocity, frame_n=frame_n)
 
-        self.stars["drift"] = self.stars[["x", "y"]].apply(star_drift, axis=1)
-        # self.stars["drift"] = self.stars["xy"].apply(star_drift)
-        drifted_xs = self.stars["drift"].str[0]
-        drifted_ys = self.stars["drift"].str[1]
+        # star_drift = partial(self.drift, velocity=self.velocity, frame_n=frame_n)
+        self.star_map["drift"] = self.star_map[["xy"]].apply(star_drift, axis=1)
+        # self.star_map["drift"] = self.star_map["xy"].apply(star_drift)
+        drifted_xs = self.star_map["drift"].str[0]
+        drifted_ys = self.star_map["drift"].str[1]
         window_x = (drifted_xs >= 0) & (drifted_xs <= self.vista.width)
         window_y = (drifted_ys >= -self.leeway) & (
             drifted_ys <= self.vista.height + self.leeway
         )
-        window = self.stars[window_x & window_y]
+        window = self.star_map[window_x & window_y]
         for xy, rgb in window[["drift", "rgb"]].itertuples(index=False, name=None):
             drawing_frame.point(tuple(xy), fill=(*rgb, 255))
 
