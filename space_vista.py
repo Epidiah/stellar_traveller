@@ -104,7 +104,7 @@ class Vista:
             duration=1000 / 24,
             loop=0,
         )
-        optimize(file_name)
+        optimize(file_name, colors=32, options=["-O3", "--no-extensions"])
 
 
 class CelestialBody:
@@ -280,18 +280,14 @@ class Planet(CelestialBody):
 class BasePlanet(CelestialBody):
     def __init__(self, vista):
         super().__init__(vista)
-        min_x, min_y = self.cart_to_screen(
-            np.array([self.vista.length * self.layer / -2, self.vista.height])
-        )
-        max_x, max_y = self.cart_to_screen(
-            np.array([self.vista.length * self.layer / 2, self.vista.height * -1])
-        )
+        min_x = min_y = -10
+        max_x, max_y = 395, 600
         self.x = RNG.integers(min_x, max_x, endpoint=True)
         self.y = RNG.integers(min_y, max_y, endpoint=True)
         self.mass = int(
             RNG.triangular(4, self.vista.height / 3, self.vista.height / np.sqrt(2))
         )
-        self.fill = self.vista.palette.random_color(col_n=min(4, self.layer // 3))
+        self.fill = self.vista.palette.random_color(col_n=RNG.integers(0, 5))
         self.feature = []
 
     def draw(self, image, drawing_frame, frame_n):
@@ -327,7 +323,7 @@ class Moon(Planet):
         self.mass = int(
             RNG.triangular(np.sqrt(short_dim), short_dim / 4, short_dim / 3)
         )
-        self.fill = self.vista.palette.random_color(col_n=self.layer - 1)
+        self.fill = self.vista.palette.random_color()
         self.moons = []
 
 
@@ -371,6 +367,58 @@ class AstroGarden(Interior):
             im = self.film_strip[2]
         else:
             im = self.film_strip[1]
+        layer_image(image, im)
+
+
+class Engineering(Interior):
+    def __init__(self, vista):
+        super(Interior, self).__init__(vista)
+        self.film_strip = [
+            self.recolor(Image.open(f"engineering{n}.png")) for n in range(4)
+        ]
+        self.osc_bg = self.vista.palette.get_color(row_n=0, col_n=1)
+        self.osc_shine = self.vista.palette.get_color(row_n=0, col_n=3)
+        self.osc_fg0 = self.vista.palette.get_color(row_n=1, col_n=4)
+        self.osc_fg1 = self.vista.palette.get_color(row_n=3, col_n=4)
+        self.osc_lines = self.vista.palette.get_color(row_n=4, col_n=3)
+        self.diagnostics = RNG.choice(["sins", "soothes"], p=[0.75, 0.25])
+
+    def draw(self, image, drawing_frame, frame_n):
+        blink = frame_n % 96
+        if blink < 24:
+            op = RNG.choice([0, 1], p=[0.75, 0.25])
+            im = self.film_strip[op]
+        elif 48 <= blink < 72:
+            op = RNG.choice([2, 3], p=[0.75, 0.25])
+            im = self.film_strip[op]
+        else:
+            op = RNG.choice([1, 2], p=[0.75, 0.25])
+            im = self.film_strip[op]
+        # Oscilloscope
+        osc = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+        dr_osc = ImageDraw.Draw(osc)
+        dr_osc.ellipse(
+            [0, 0, 100, 100], fill=self.osc_bg, outline=self.osc_fg0, width=3
+        )
+        dr_osc.ellipse([60, 10, 80, 30], fill=self.osc_shine)
+        dr_osc.line([50, 0, 50, 100], fill=self.osc_lines)
+        dr_osc.line([0, 50, 100, 50], fill=self.osc_lines)
+        mask = osc.copy()
+        xs = np.arange(101)
+        if self.diagnostics == "sins":
+            y0s = np.sin((xs - 50 + frame_n) * np.pi / 60) * 15 + 50
+            y1s = np.sin((xs - 50) * (frame_n / 120 % 60)) * 20 + 50
+            dr_osc.line(
+                [(x, y) for x, y in zip(xs, y0s)], fill=self.osc_fg0, joint="curve"
+            )
+            dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
+        elif self.diagnostics == "soothes":
+            y0s = np.sin(xs - 50 + (frame_n / 40 % 60)) * 15 + 50
+            y1s = np.sin((xs - 50) + (frame_n / 20 % 60)) * 20 + 50
+            dr_osc.point([(x, y) for x, y in zip(xs, y0s)], fill=self.osc_fg0)
+            dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
+        im.paste(osc, box=(290, 10), mask=mask)
+
         layer_image(image, im)
 
 
@@ -484,24 +532,26 @@ def testers():
     return im, d
 
 
-## Testing
+# Testing
 # p = pd.Series([
-#         "Purple",
-#         "Violet",
-#         "Orange",
-#         "Green",
-#         "Olive",
-#         "HoneyDew"
+#         "Gold",
+#         "Tomato",
+#         "RebeccaPurple",
+#         "SpringGreen",
+#         "MediumSlateBlue",
+#         "Maroon"
 #     ]).apply(ImageColor.getrgb)
-p = pd.Series(
-    [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for _ in range(6)]
-)
+# p = pd.Series(
+#     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for _ in range(6)]
+# )
+# test = Vista(palette=Palette(p))
 test = Vista()
 stars = StarField(test, 400)
-for _ in range(18):
+for _ in range(8):
     BasePlanet(test)
-interior = Interior(test, "observation_windows.png")
+# interior = Interior(test, "engineering.png")
 # interior = AstroGarden(test)
+interior = Engineering(test)
 test.draw_bodies()
 test.save()
 im = test.palette.get_image()
