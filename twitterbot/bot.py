@@ -157,7 +157,7 @@ class GifTweet(object):
     def set_metadata(self):
         request_data = {
             "media_id": self.media_id,
-            "alt_text": "Veiw of space from the porthole in engineering, along with instruments."
+            "alt_text": "Veiw of space from observation windows aboard a starship as some planets gently roll by."
         }
         req = requests.post(url=METADATA_ENDPOINT_URL, data=request_data, auth=oauth)
 
@@ -166,7 +166,7 @@ class GifTweet(object):
         Publishes Tweet with attached gif
         """
         request_data = {
-            "status": "Engineering reports nominal...",
+            "status": "Systems check [✔️]",
             "media_ids": self.media_id,
         }
 
@@ -175,6 +175,7 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
+    time.sleep(60**2)
     vista = GifTweet(GIF_FILENAME)
     vista.upload_init()
     vista.upload_append()

@@ -1,7 +1,6 @@
 # Specify filepatterns you want git to ignore.
 .env
 ReadAndWriter.md
-*.png
 *.gif
 *.sublime-project
 *.sublime-workspace
