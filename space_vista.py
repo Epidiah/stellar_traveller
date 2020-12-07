@@ -3,7 +3,7 @@
 # Here we assemble a randomly generate gif that is a view of some astronomical
 # wonders from various rooms inside our space craft.
 
-from PIL import Image, ImageDraw, ImageColor
+from PIL import Image, ImageDraw, ImageColor, ImageFilter
 from functools import partial
 from pygifsicle import optimize
 from tqdm import tqdm
@@ -141,6 +141,23 @@ class CelestialBody:
     def draw(self, image, drawing_frame, frame_n):
         pass
 
+    # def drift(self, xy, velocity, frame_n):
+    #     """
+    #     Takes in a vector of screen coordinates `xy`.
+    #     Returns new screen coordinates that assure an Atari wrap-around situation.
+    #     """
+    #     # Transform screen coordinates to Cartesian because we're not barbarians here.
+    #     xy = self.screen_to_cart(xy)
+    #     # Our rocket runs on that sweet, sweet linear algebra.
+    #     nudge_matrix = self.vista.rot_matrix @ (velocity * frame_n * np.array([1, 0])) 
+    #     xy = xy - nudge_matrix
+    #     # Check for wrap-around.
+    #     cosmic_boundaries = self.vista.length * velocity
+    #     test_x, test_y = xy @ self.vista.rot_matrix
+    #     if abs(test_x) > cosmic_boundaries / 2:
+    #         xy = xy + self.vista.rot_matrix @ (np.sign(test_x)*cosmic_boundaries * np.array([1, 0]))
+    #     return self.cart_to_screen(xy)
+
     def drift(self, xy, velocity, frame_n):
         """
         Takes in a vector of screen coordinates `xy`.
@@ -153,9 +170,9 @@ class CelestialBody:
         xy = xy - nudge_matrix
         # Check for wrap-around.
         cosmic_boundaries = self.vista.length * velocity
-        test = self.vista.rot_matrix @ xy
-        if abs(test[0]) > cosmic_boundaries / 2:
-            xy = xy + (cosmic_boundaries * np.array([1, 0])) @ self.vista.rot_matrix
+        test_x, test_y = (self.vista.rot_matrix @ xy)
+        if abs(test_x) > cosmic_boundaries / 2:
+            xy = xy - np.sign(test_x)*(cosmic_boundaries * np.array([1, 0])) @ self.vista.rot_matrix
         return self.cart_to_screen(xy)
 
 
@@ -243,43 +260,10 @@ class StarField(CelestialBody):
             drawing_frame.point(tuple(xy), fill=(*rgb, 255))
 
 
-# class Planet(CelestialBody):
-#     """
-#     Planets can only exist in layers 1 through 3.
-#     """
-
-#     def __init__(self, vista):
-#         super().__init__(vista)
-#         min_x, min_y = self.cart_to_screen(
-#             np.array([self.vista.length * self.layer / -2, self.vista.height])
-#         )
-#         max_x, max_y = self.cart_to_screen(
-#             np.array([self.vista.length * self.layer / 2, self.vista.height * -1])
-#         )
-#         self.x = RNG.integers(min_x, max_x, endpoint=True)
-#         self.y = RNG.integers(min_y, max_y, endpoint=True)
-#         self.mass = int(
-#             RNG.triangular(4, self.vista.height / 3, self.vista.height / np.sqrt(2))
-#         )
-#         self.fill = self.vista.palette.random_color(col_n=self.layer - 1)
-#         self.moons = [
-#             Moon(self, self.vista) for _ in range(RNG.integers(5, endpoint=True))
-#         ]
-
-#     def draw(self, image, drawing_frame, frame_n):
-#         x, y = self.drift(
-#             np.array([self.x, self.y]), velocity=self.layer, frame_n=frame_n
-#         )
-#         drawing_frame.ellipse(
-#             [x, y, x + self.mass, y + self.mass], fill=(*self.fill, 255)
-#         )
-#         for moon in self.moons:
-#             moon.draw(image, drawing_frame, frame_n)
-
-
 class BasePlanet(CelestialBody):
     def __init__(self, vista):
         super().__init__(vista)
+        self.velocity = min(6, self.layer // 3 + 1)
         min_x = min_y = -10
         max_x, max_y = 395, 600
         self.x = RNG.integers(min_x, max_x, endpoint=True)
@@ -288,7 +272,54 @@ class BasePlanet(CelestialBody):
             RNG.triangular(4, self.vista.height / 3, self.vista.height / np.sqrt(2))
         )
         self.fill = self.vista.palette.random_color()
-        self.feature = []
+        self.features = []
+
+    def draw(self, image, drawing_frame, frame_n):
+        x, y = self.drift(
+            np.array([self.x, self.y]),
+            velocity=self.velocity,
+            frame_n=frame_n,
+        )
+        drawing_frame.ellipse(
+            [x, y, x + self.mass, y + self.mass], fill=(*self.fill, 255)
+        )
+        for feature in self.features:
+            feature.draw(image, drawing_frame, frame_n)
+
+class SwiftPlanet(BasePlanet):
+    def __init__(self, vista, velocity=None):
+        super().__init__(vista)
+        self.x = 200
+        self.y = 200
+        if velocity is not None and 1200 % velocity == 0:
+            self.velocity = velocity
+        else:
+            self.velocity = RNG.choice([8,10,12,16], p=[.3,.3,.3,.1])
+
+class CappedPlanet(BasePlanet):
+    def __init__(self, vista):
+        super().__init__(vista)
+        self.im = self.cap()
+
+    def cap(self):
+        new = Image.new('RGBA', (self.mass+10, self.mass+10), (0,0,0,0))
+        x = RNG.integers(new.size[0])
+        y = RNG.integers(new.size[1])
+        cap = new.copy()
+        dn = ImageDraw.Draw(new)
+        dn.ellipse(
+            [5, 5, 5 + self.mass, 5 + self.mass], fill=(*self.fill, 255)
+        )
+        mask = new.copy()
+        dc = ImageDraw.Draw(cap)
+        dc.ellipse(
+            [x, y, x + self.mass//10, y + self.mass//10], fill=(255,255,255, 112)
+        )
+
+        # mask.paste(cap, mask=mask)
+        dc.bitmap((0,0), mask)
+        layer_image(new, cap)
+        return new # new.filter(ImageFilter.UnsharpMask())
 
     def draw(self, image, drawing_frame, frame_n):
         x, y = self.drift(
@@ -296,36 +327,9 @@ class BasePlanet(CelestialBody):
             velocity=min(6, self.layer // 3 + 1),
             frame_n=frame_n,
         )
-        drawing_frame.ellipse(
-            [x, y, x + self.mass, y + self.mass], fill=(*self.fill, 255)
-        )
-        for feature in self.feature:
+        image.paste(self.im, box=(int(x),int(y)))
+        for feature in self.features:
             feature.draw(image, drawing_frame, frame_n)
-
-
-# class Moon(Planet):
-#     def __init__(self, planet, vista):
-#         self.planet = planet
-#         self.vista = vista
-#         self.center = np.array([self.vista.width // 2, self.vista.height // 2])
-#         self.layer = min(5, max(1, self.planet.layer + RNG.choice([-1, 1])))
-#         short_dim = planet.mass
-#         self.x = self.planet.x + RNG.integers(
-#             -int(short_dim / 2),
-#             int(short_dim * 1.5),
-#             endpoint=True,
-#         )
-#         self.y = self.planet.x + RNG.integers(
-#             -int(short_dim / 2),
-#             int(short_dim * 1.5),
-#             endpoint=True,
-#         )
-#         self.mass = int(
-#             RNG.triangular(np.sqrt(short_dim), short_dim / 4, short_dim / 3)
-#         )
-#         self.fill = self.vista.palette.random_color()
-#         self.moons = []
-
 
 class Interior(CelestialBody):
     def __init__(self, vista, file_path):
@@ -373,7 +377,7 @@ class AstroGarden(Interior):
 class Engineering(Interior):
     def __init__(self, vista):
         super(Interior, self).__init__(vista)
-        self.flicker = RNG.choice(["", "1"], p=[0.8, 0.2])
+        self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
         self.film_strip = [
             self.recolor(Image.open(f"{self.flicker}engineering{n}.png"))
             for n in range(4)
@@ -437,7 +441,7 @@ class Palette:
             self.palette = self.random_palette(color_depth=6)
         elif type(palette) == pd.Series:
             self.palette = self.fill_shades(
-                self.sort_palette(palette).to_frame(name=str(self.shade_depth - 1))
+                self.sort_palette(palette).to_frame(name=0)
             )
         elif type(palette) == pd.DataFrame:
             self.palette = palette
@@ -509,6 +513,26 @@ class Palette:
         return plt_im.convert("P")
 
 
+class ComplimentaryPalette(Palette):
+    def random_palette(self, color_depth=6):
+        base_hue = RNG.integers(0,360)
+        support_right = (base_hue + 12) % 360
+        support_left = (base_hue - 12) % 360
+        pop_hue = (base_hue + 180) % 360
+        palette = pd.Series(
+                [
+                    ImageColor.getrgb(f'hsl({hue}, {RNG.integers(70,101)}%, {RNG.integers(40,61)}%)')
+                    for hue in (base_hue, support_right, support_left, pop_hue)
+                ] + [ImageColor.getrgb(hsl) for hsl in 
+                (f'hsl({pop_hue}, 50%, 70%)', f'hsl({pop_hue}, 50%, 30%)')]
+        )
+        palette = self.sort_palette(palette)
+        palette = palette.to_frame(name=0)
+        return self.fill_shades(palette)
+
+
+
+
 ## Helper Functions
 
 
@@ -561,10 +585,15 @@ def testers():
 #     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for _ in range(6)]
 # )
 # test = Vista(palette=Palette(p))
+# cp = ComplimentaryPalette()
 test = Vista()
 stars = StarField(test, 500)
 for _ in range(RNG.integers(1, 13)):
     BasePlanet(test)
+# for v in range(1,4):
+#     SwiftPlanet(test, velocity=v*-2)
+
+# Interior
 # interior = Interior(test, "observation_windows.png")
 # interior = AstroGarden(test)
 interior = Engineering(test)
