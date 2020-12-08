@@ -3,8 +3,9 @@
 # Here we assemble a randomly generate gif that is a view of some astronomical
 # wonders from various rooms inside our space craft.
 
-from PIL import Image, ImageDraw, ImageColor, ImageFilter
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 from functools import partial
+from itertools import product
 from pygifsicle import optimize
 from tqdm import tqdm
 import numpy as np
@@ -66,7 +67,7 @@ class Vista:
         self.bodies = []
         self.length = length
         self.frames = [
-            Image.new("RGBA", self.size, color="Black") for _ in range(self.length)
+            Image.new("RGBA", self.size, color="Black") for dummy in range(self.length)
         ]
 
     def add_celestial_body(self, body):
@@ -104,7 +105,11 @@ class Vista:
             duration=1000 / 24,
             loop=0,
         )
-        optimize(file_name, colors=32, options=["-O3", "--no-extensions"])
+        optimize(
+            file_name,
+            colors=self.palette.n_colors,
+            options=["-O3", "--no-extensions"],
+        )
 
 
 class CelestialBody:
@@ -141,23 +146,6 @@ class CelestialBody:
     def draw(self, image, drawing_frame, frame_n):
         pass
 
-    # def drift(self, xy, velocity, frame_n):
-    #     """
-    #     Takes in a vector of screen coordinates `xy`.
-    #     Returns new screen coordinates that assure an Atari wrap-around situation.
-    #     """
-    #     # Transform screen coordinates to Cartesian because we're not barbarians here.
-    #     xy = self.screen_to_cart(xy)
-    #     # Our rocket runs on that sweet, sweet linear algebra.
-    #     nudge_matrix = self.vista.rot_matrix @ (velocity * frame_n * np.array([1, 0])) 
-    #     xy = xy - nudge_matrix
-    #     # Check for wrap-around.
-    #     cosmic_boundaries = self.vista.length * velocity
-    #     test_x, test_y = xy @ self.vista.rot_matrix
-    #     if abs(test_x) > cosmic_boundaries / 2:
-    #         xy = xy + self.vista.rot_matrix @ (np.sign(test_x)*cosmic_boundaries * np.array([1, 0]))
-    #     return self.cart_to_screen(xy)
-
     def drift(self, xy, velocity, frame_n):
         """
         Takes in a vector of screen coordinates `xy`.
@@ -170,10 +158,44 @@ class CelestialBody:
         xy = xy - nudge_matrix
         # Check for wrap-around.
         cosmic_boundaries = self.vista.length * velocity
-        test_x, test_y = (self.vista.rot_matrix @ xy)
-        if abs(test_x) > cosmic_boundaries / 2:
-            xy = xy - np.sign(test_x)*(cosmic_boundaries * np.array([1, 0])) @ self.vista.rot_matrix
+        test = self.vista.rot_matrix @ xy
+        if abs(test[0]) > cosmic_boundaries / 2:
+            xy = xy + (cosmic_boundaries * np.array([1, 0])) @ self.vista.rot_matrix
         return self.cart_to_screen(xy)
+
+    # def drift(self, xy, velocity, frame_n):
+    #     """
+    #     Takes in a vector of screen coordinates `xy`.
+    #     Returns new screen coordinates that assure an Atari wrap-around situation.
+    #     """
+    #     # Transform screen coordinates to Cartesian because we're not barbarians here.
+    #     xy = self.screen_to_cart(xy)
+    #     # Our rocket runs on that sweet, sweet linear algebra.
+    #     nudge_matrix = (velocity * frame_n * np.array([1, 0])) @ self.vista.rot_matrix
+    #     xy = xy - nudge_matrix
+    #     # Check for wrap-around.
+    #     cosmic_boundaries = self.vista.length * velocity
+    #     test_x, test_y = (self.vista.rot_matrix @ xy)
+    #     if abs(test_x) > cosmic_boundaries / 2:
+    #         xy = xy - np.sign(test_x)*(cosmic_boundaries * np.array([1, 0])) @ self.vista.rot_matrix
+    #     return self.cart_to_screen(xy)
+
+    # def drift(self, xy, velocity, frame_n):
+    #     """
+    #     Takes in a vector of screen coordinates `xy`.
+    #     Returns new screen coordinates that assure an Atari wrap-around situation.
+    #     """
+    #     # Transform screen coordinates to Cartesian because we're not barbarians here.
+    #     xy = self.screen_to_cart(xy)
+    #     # Our rocket runs on that sweet, sweet linear algebra.
+    #     nudge_matrix = self.vista.rot_matrix @ (velocity * frame_n * np.array([1, 0]))
+    #     xy = xy - nudge_matrix
+    #     # Check for wrap-around.
+    #     cosmic_boundaries = self.vista.length * velocity
+    #     test_x, test_y = xy @ self.vista.rot_matrix
+    #     if abs(test_x) > cosmic_boundaries / 2:
+    #         xy = xy + self.vista.rot_matrix @ (np.sign(test_x)*cosmic_boundaries * np.array([1, 0]))
+    #     return self.cart_to_screen(xy)
 
 
 class StarField(CelestialBody):
@@ -286,6 +308,7 @@ class BasePlanet(CelestialBody):
         for feature in self.features:
             feature.draw(image, drawing_frame, frame_n)
 
+
 class SwiftPlanet(BasePlanet):
     def __init__(self, vista, velocity=None):
         super().__init__(vista)
@@ -294,7 +317,8 @@ class SwiftPlanet(BasePlanet):
         if velocity is not None and 1200 % velocity == 0:
             self.velocity = velocity
         else:
-            self.velocity = RNG.choice([8,10,12,16], p=[.3,.3,.3,.1])
+            self.velocity = RNG.choice([8, 10, 12, 16], p=[0.3, 0.3, 0.3, 0.1])
+
 
 class CappedPlanet(BasePlanet):
     def __init__(self, vista):
@@ -302,24 +326,22 @@ class CappedPlanet(BasePlanet):
         self.im = self.cap()
 
     def cap(self):
-        new = Image.new('RGBA', (self.mass+10, self.mass+10), (0,0,0,0))
+        new = Image.new("RGBA", (self.mass + 10, self.mass + 10), (0, 0, 0, 0))
         x = RNG.integers(new.size[0])
         y = RNG.integers(new.size[1])
         cap = new.copy()
         dn = ImageDraw.Draw(new)
-        dn.ellipse(
-            [5, 5, 5 + self.mass, 5 + self.mass], fill=(*self.fill, 255)
-        )
+        dn.ellipse([5, 5, 5 + self.mass, 5 + self.mass], fill=(*self.fill, 255))
         mask = new.copy()
         dc = ImageDraw.Draw(cap)
         dc.ellipse(
-            [x, y, x + self.mass//10, y + self.mass//10], fill=(255,255,255, 112)
+            [x, y, x + self.mass // 10, y + self.mass // 10], fill=(255, 255, 255, 112)
         )
 
         # mask.paste(cap, mask=mask)
-        dc.bitmap((0,0), mask)
+        dc.bitmap((0, 0), mask)
         layer_image(new, cap)
-        return new # new.filter(ImageFilter.UnsharpMask())
+        return new  # new.filter(ImageFilter.UnsharpMask())
 
     def draw(self, image, drawing_frame, frame_n):
         x, y = self.drift(
@@ -327,19 +349,34 @@ class CappedPlanet(BasePlanet):
             velocity=min(6, self.layer // 3 + 1),
             frame_n=frame_n,
         )
-        image.paste(self.im, box=(int(x),int(y)))
+        image.paste(self.im, box=(int(x), int(y)))
         for feature in self.features:
             feature.draw(image, drawing_frame, frame_n)
 
+
 class Interior(CelestialBody):
-    def __init__(self, vista, file_path):
+    def __init__(self, vista, file_path, invert_colors=False):
         super().__init__(vista)
-        self.im = Image.open(file_path)
-        self.im = self.recolor(self.im)
+        self.bgr = RNG.permutation(range(3))
+        if invert_colors:
+            self.invert_color = RNG.integers(2, size=3)
+        else:
+            self.invert_color = (0, 0, 0)
+        self.activate_camera(file_path)
+
+    def activate_camera(self, file_path):
+        self.im = self.recolor(Image.open(file_path))
 
     def recolor(self, im):
         # Convert image to RGB mode so we can quantize the colors to the palette.
-        recolor_im = im.convert("RGB")
+        *rgb, a = im.split()
+        reorder = []
+        for i, c in zip(self.invert_color, self.bgr):
+            if i:
+                reorder.append(ImageChops.invert(rgb[c]))
+            else:
+                reorder.append(rgb[c])
+        recolor_im = Image.merge("RGB", reorder)
         recolor_im = recolor_im.quantize(
             colors=32,
             palette=self.vista.palette.get_image(),
@@ -347,20 +384,38 @@ class Interior(CelestialBody):
             dither=0,
         )
         # Convert back and re-establish the alpha channel through some hoops
-        recolor_im = recolor_im.convert("RGBA")
-        temp_im = Image.new("RGBA", im.size, color=(0, 0, 0, 0))
-        temp_im.paste(recolor_im, mask=im)
-        return temp_im
+        im = Image.merge("RGBA", (*recolor_im.convert("RGB").split(), a))
+        return im
+
+    # def recolor(self, im):
+    #     # Convert image to RGB mode so we can quantize the colors to the palette.
+    #     recolor_im = im.convert("RGB")
+    #     rgb = recolor_im.split()
+    #     recolor_im = Image.merge('RGB', [rgb[c] for c in self.bgr])
+    #     recolor_im = recolor_im.quantize(
+    #         colors=32,
+    #         palette=self.vista.palette.get_image(),
+    #         method=Image.FASTOCTREE,
+    #         dither=0,
+    #     )
+    #     # Convert back and re-establish the alpha channel through some hoops
+    #     recolor_im = recolor_im.convert("RGBA")
+    #     temp_im = Image.new("RGBA", im.size, color=(0, 0, 0, 0))
+    #     temp_im.paste(recolor_im, mask=im)
+    #     return temp_im
 
     def draw(self, image, drawing_frame, frame_n):
         layer_image(image, self.im)
 
 
 class AstroGarden(Interior):
-    def __init__(self, vista):
-        super(Interior, self).__init__(vista)
+    def __init__(self, vista, file_path="garden_stroll.png"):
+        super().__init__(vista, file_path)
+
+    def activate_camera(self, file_path):
+        file_name, ext = file_path.split(".")
         self.film_strip = [
-            self.recolor(Image.open(f"garden_stroll{n}.png")) for n in range(3)
+            self.recolor(Image.open(f"{file_name}{n}.{ext}")) for n in range(3)
         ]
 
     def draw(self, image, drawing_frame, frame_n):
@@ -374,20 +429,61 @@ class AstroGarden(Interior):
         layer_image(image, im)
 
 
+# class StellarCafe(Interior):
+#     def __init__(self, vista, file_path='cafe.png'):
+#         super().__init__(vista, file_path)
+
+#     def activate_camera(self, file_path):
+#         file_name, ext = file_path.split('.')
+#         self.film_strip = [
+#             self.recolor(Image.open(f"{file_name}{n}.{ext}")) for n in range(6)
+#         ]
+
+#     def draw(self, image, drawing_frame, frame_n):
+#         mist = frame_n % 96
+#         im = self.film_strip[mist//16]
+#         layer_image(image, im)
+
+
+class StellarCafe(Interior):
+    def __init__(self, vista, file_path="cafe.png"):
+        super().__init__(vista, file_path)
+        self.last_steam = None
+
+    def draw(self, image, drawing_frame, frame_n):
+        if (self.last_steam is None) or (frame_n % 4 == 0):
+            steam = steamer(self.im, [120, 280, 135, 314])
+            self.last_steam = steamer(steam, [225, 286, 240, 320])
+        layer_image(image, self.last_steam)
+
+    # def draw(self, image, drawing_frame, frame_n):
+    #     if (self.last_steam is None) or (frame_n % 4 == 0):
+    #         steam = self.steamer(self.im, [120, 280, 135, 314], frame_n=frame_n)
+    #         self.last_steam = self.steamer(steam, [225, 286, 240, 320], frame_n=frame_n)
+    #     layer_image(image, self.last_steam)
+
+
 class Engineering(Interior):
-    def __init__(self, vista):
-        super(Interior, self).__init__(vista)
-        self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
-        self.film_strip = [
-            self.recolor(Image.open(f"{self.flicker}engineering{n}.png"))
-            for n in range(4)
-        ]
+    def __init__(self, vista, file_path="engineering.png"):
+        super().__init__(vista, file_path)
         self.osc_bg = self.vista.palette.get_color(hue=-1, shade=-2)
-        self.osc_shine = self.vista.palette.get_color(hue=-1, shade=-4)
-        self.osc_fg0 = self.vista.palette.get_color(hue=4, shade=0)
+        # if self.vista.palette.n_colors < 32:
+        #     self.osc_shine = self.vista.palette.get_color(hue=-1, shade=0)
+        # else:
+        #     self.osc_shine = self.vista.palette.get_color(hue=-1, shade=1)
+        self.osc_shine = self.vista.palette.get_color(hue=-1, shade=1)
+        self.osc_fg0 = self.vista.palette.get_color(hue=-2, shade=0)
         self.osc_fg1 = self.vista.palette.get_color(hue=2, shade=0)
         self.osc_lines = self.vista.palette.get_color(hue=1, shade=1)
         self.diagnostics = RNG.choice(["sins", "soothes"], p=[0.75, 0.25])
+
+    def activate_camera(self, file_path):
+        file_name, ext = file_path.split(".")
+        self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
+        self.film_strip = [
+            self.recolor(Image.open(f"{self.flicker}{file_name}{n}.{ext}"))
+            for n in range(4)
+        ]
 
     def draw(self, image, drawing_frame, frame_n):
         blink = frame_n % 96
@@ -440,11 +536,10 @@ class Palette:
         if palette is None:
             self.palette = self.random_palette(color_depth=6)
         elif type(palette) == pd.Series:
-            self.palette = self.fill_shades(
-                self.sort_palette(palette).to_frame(name=0)
-            )
+            self.palette = self.fill_shades(self.sort_palette(palette).to_frame(name=0))
         elif type(palette) == pd.DataFrame:
             self.palette = palette
+        self.n_colors = int(2 ** np.ceil(np.log(self.palette.size + 2) / np.log(2)))
 
     def random_palette(self, color_depth=6):
         """
@@ -513,24 +608,82 @@ class Palette:
         return plt_im.convert("P")
 
 
-class ComplimentaryPalette(Palette):
+class SplitComplementaryPalette(Palette):
     def random_palette(self, color_depth=6):
-        base_hue = RNG.integers(0,360)
-        support_right = (base_hue + 12) % 360
-        support_left = (base_hue - 12) % 360
-        pop_hue = (base_hue + 180) % 360
+        base_hue = RNG.integers(0, 360)
+        support_right = (base_hue + 120) % 360
+        support_left = (base_hue - 120) % 360
         palette = pd.Series(
-                [
-                    ImageColor.getrgb(f'hsl({hue}, {RNG.integers(70,101)}%, {RNG.integers(40,61)}%)')
-                    for hue in (base_hue, support_right, support_left, pop_hue)
-                ] + [ImageColor.getrgb(hsl) for hsl in 
-                (f'hsl({pop_hue}, 50%, 70%)', f'hsl({pop_hue}, 50%, 30%)')]
+            [
+                ImageColor.getrgb(f"hsl({hue}, 70%, 50%)")
+                for hue in (base_hue, support_left, support_right)
+            ]
+            + [
+                ImageColor.getrgb(f"hsl({hue}, 50%, 60%)")
+                for hue in (base_hue, support_left, support_right)
+            ]
         )
         palette = self.sort_palette(palette)
         palette = palette.to_frame(name=0)
         return self.fill_shades(palette)
 
 
+class MonoPalette16(Palette):
+    def __init__(self, palette=None, hue=None, color_depth=4, shade_depth=4):
+        self.hue = hue % 360
+        super().__init__(palette=None, color_depth=4, shade_depth=4)
+        self.n_colors = 16
+
+    def random_palette(self, color_depth=3):
+        if self.hue is not None:
+            return self.build_palette(self.hue)
+        base_hue = RNG.integers(0, 360)
+        return self.build_palette(base_hue)
+
+    def build_palette(self, base_hue):
+        gaps = np.linspace(60, 10, 4)
+        palette = pd.DataFrame(
+            np.reshape(
+                [
+                    f"hsl({base_hue}, {s+5*(4-i)}%, {l}%)"
+                    for i, s in enumerate(gaps)
+                    for l in gaps
+                ],
+                (4, 4),
+            ),
+            columns=range(4),
+        )
+        palette = palette.applymap(ImageColor.getrgb)
+        return palette
+
+    def get_image(self):
+        h, s = self.palette.shape
+        plt_im = Image.new("RGBA", (200 * h, 200 * s), color="black")
+        plt_drw = ImageDraw.Draw(plt_im)
+        for x, hue in enumerate(self.palette.itertuples(index=False, name=None)):
+            for y, (r, g, b) in enumerate(hue):
+                plt_drw.rectangle(
+                    [200 * x, 200 * y, 200 * (x + 1), 200 * (y + 1)],
+                    fill=(r, g, b),
+                )
+        return plt_im.convert("P")
+
+
+class ComplementaryPalette16(Palette):
+    def __init__(self, palette=None, color_depth=3, shade_depth=4):
+        super().__init__(palette=None, color_depth=3, shade_depth=4)
+
+    def random_palette(self, color_depth=3):
+        base_hue = RNG.integers(0, 360)
+        palette = pd.Series(
+            [ImageColor.getrgb(f"hsl({base_hue}, {sat}%, 50%)") for sat in (20, 50)]
+            + [
+                ImageColor.getrgb(f"hsl({(base_hue+180)%360}, 50%, 50%)"),
+            ]
+        )
+        palette = self.sort_palette(palette)
+        palette = palette.to_frame(name=0)
+        return self.fill_shades(palette)
 
 
 ## Helper Functions
@@ -538,6 +691,23 @@ class ComplimentaryPalette(Palette):
 
 def layer_image(base_im, top_im):
     base_im.paste(top_im, top_im)
+
+def steamer(im, steam_box):
+        # Make some noise!
+        mist = Image.effect_noise(
+            [steam_box[2] - steam_box[0], steam_box[3] - steam_box[1]],
+            RNG.integers(290, 311),
+        ).convert("RGBA")
+        # Confine it to a randomly sized ellipse
+        shifts = RNG.integers(-4,5,4)
+        mask = Image.new('RGBA', mist.size, (0,0,0,0))
+        drw_mask = ImageDraw.Draw(mask)
+        drw_mask.ellipse(((0,0)+ mist.size + shifts).tolist(), 'white')
+        steams = Image.new('RGBA', im.size)
+        steams.paste(mist, box=steam_box, mask=mask)
+        steams = steams.effect_spread(2).filter(ImageFilter.GaussianBlur(3))
+        steams.putalpha(64)
+        return ImageChops.lighter(im,steams)
 
 
 ## Exploratory Functions
@@ -568,6 +738,23 @@ def testers():
     return im, d
 
 
+def remixer(im, order=None, inverts=None):
+    *rgb, a = im.split()
+    if order is None:
+        order = RNG.permutations(range(3))
+    if inverts is None:
+        inverts = RNG.integers(2, size=3)
+    reorder = []
+    for i, c in zip(inverts, order):
+        if i:
+            reorder.append(ImageChops.invert(rgb[c]))
+        else:
+            reorder.append(rgb[c])
+    reorder.append(a)
+    reordered_im = Image.merge("RGBA", reorder)
+    return reordered_im
+
+
 # Testing
 
 # p = Palette()
@@ -582,13 +769,14 @@ def testers():
 #         "Maroon"
 #     ]).apply(ImageColor.getrgb)
 # p = pd.Series(
-#     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for _ in range(6)]
+#     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for dummy in range(6)]
 # )
 # test = Vista(palette=Palette(p))
-# cp = ComplimentaryPalette()
+# scp = SplitComplementaryPalette()
+# mp = MonoPalette16(hue=240)
 test = Vista()
 stars = StarField(test, 500)
-for _ in range(RNG.integers(1, 13)):
+for dummy in range(RNG.integers(1, 13)):
     BasePlanet(test)
 # for v in range(1,4):
 #     SwiftPlanet(test, velocity=v*-2)
@@ -596,9 +784,10 @@ for _ in range(RNG.integers(1, 13)):
 # Interior
 # interior = Interior(test, "observation_windows.png")
 # interior = AstroGarden(test)
-interior = Engineering(test)
+# interior = Engineering(test)
+interior = StellarCafe(test)
 test.draw_bodies()
 test.save()
 im = test.palette.get_image()
 im.save("palette.png")
-print("\a")
+# print("\a")

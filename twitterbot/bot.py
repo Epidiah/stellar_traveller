@@ -166,7 +166,7 @@ class GifTweet(object):
         Publishes Tweet with attached gif
         """
         request_data = {
-            "status": "On course, but the destination seems unimportant.",
+            "status": "A warm beverage, pleasant company, and an unobscured view.",
             "media_ids": self.media_id,
         }
 
@@ -175,7 +175,7 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    time.sleep(47**2)
+    time.sleep(17**2)
     vista = GifTweet(GIF_FILENAME)
     vista.upload_init()
     vista.upload_append()
