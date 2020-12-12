@@ -28,6 +28,8 @@ CONSUMER_KEY = os.getenv("C_KEY")
 CONSUMER_SECRET = os.getenv("C_SECRET")
 ACCESS_TOKEN = os.getenv("VS_A_TOKEN")
 ACCESS_TOKEN_SECRET = os.getenv("VS_A_TOKEN_SECRET")
+# ACCESS_TOKEN = os.getenv("A_TOKEN")
+# ACCESS_TOKEN_SECRET = os.getenv("A_TOKEN_SECRET")
 
 GIF_FILENAME = "../starry-000001.gif"
 
@@ -166,7 +168,7 @@ class GifTweet(object):
         Publishes Tweet with attached gif
         """
         request_data = {
-            "status": "A warm beverage, pleasant company, and an unobscured view.",
+            "status": 'Quietly celebrating for no reason in particular.',
             "media_ids": self.media_id,
         }
 
@@ -175,7 +177,9 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    time.sleep(17**2)
+    minute = 60
+    hour = 60**2
+    time.sleep(5*minute)
     vista = GifTweet(GIF_FILENAME)
     vista.upload_init()
     vista.upload_append()
