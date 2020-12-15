@@ -168,16 +168,15 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    while True:
-        status_dict = sv.random_spacescape()
-        minute = 60
-        hour = 60 ** 2
-        # time.sleep(67*minute)
-        # print("\a")
-        spacescape = GifTweet(GIF_FILENAME)
-        spacescape.upload_init()
-        spacescape.upload_append()
-        spacescape.upload_finalize()
-        spacescape.set_metadata()
-        status = '\n'.join([v for v in status_dict.values()])
-        spacescape.tweet(status)
+    status_dict = sv.random_spacescape()
+    minute = 60
+    hour = 60 ** 2
+    # time.sleep(67*minute)
+    # print("\a")
+    spacescape = GifTweet(GIF_FILENAME)
+    spacescape.upload_init()
+    spacescape.upload_append()
+    spacescape.upload_finalize()
+    spacescape.set_metadata()
+    status = '\n'.join([v for v in status_dict.values()])
+    spacescape.tweet(status)
