@@ -172,7 +172,7 @@ if __name__ == "__main__":
         status_dict = sv.random_spacescape()
         minute = 60
         hour = 60 ** 2
-        time.sleep(67*minute)
+        # time.sleep(67*minute)
         # print("\a")
         spacescape = GifTweet(GIF_FILENAME)
         spacescape.upload_init()
