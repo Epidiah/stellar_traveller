@@ -1,17 +1,8 @@
-# import os
-# import tweepy
-# from dotenv import load_dotenv
-
-# load_dotenv()
-# C_KEY = os.getenv('C_KEY')
-# C_SECRET = os.getenv('C_SECRET')
-# A_TOKEN = os.getenv('VS_A_TOKEN')
-# A_TOKEN_SECRET = os.getenv('VS_A_TOKEN_SECRET')
-
-
 import os
 import sys
 import time
+
+import space_vista as sv
 
 import json
 import requests
@@ -31,7 +22,7 @@ ACCESS_TOKEN_SECRET = os.getenv("VS_A_TOKEN_SECRET")
 # ACCESS_TOKEN = os.getenv("A_TOKEN")
 # ACCESS_TOKEN_SECRET = os.getenv("A_TOKEN_SECRET")
 
-GIF_FILENAME = "../starry-000001.gif"
+GIF_FILENAME = "starry.gif"
 
 
 oauth = OAuth1(
@@ -155,20 +146,20 @@ class GifTweet(object):
 
         self.processing_info = req.json().get("processing_info", None)
         self.check_status()
-    
+
     def set_metadata(self):
         request_data = {
             "media_id": self.media_id,
-            "alt_text": "Veiw of space from observation windows aboard a starship as some planets gently roll by."
+            "alt_text": "Veiw of space from observation windows aboard a starship as some planets gently roll by.",
         }
         req = requests.post(url=METADATA_ENDPOINT_URL, data=request_data, auth=oauth)
 
-    def tweet(self):
+    def tweet(self, status):
         """
         Publishes Tweet with attached gif
         """
         request_data = {
-            "status": 'Quietly celebrating for no reason in particular.',
+            "status": status,
             "media_ids": self.media_id,
         }
 
@@ -177,22 +168,16 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    minute = 60
-    hour = 60**2
-    time.sleep(5*minute)
-    vista = GifTweet(GIF_FILENAME)
-    vista.upload_init()
-    vista.upload_append()
-    vista.upload_finalize()
-    vista.set_metadata()
-    vista.tweet()
-
-# auth = tweepy.OAuthHandler(C_KEY, C_SECRET)
-# auth.set_access_token(A_TOKEN, A_TOKEN_SECRET)
-# api = tweepy.API(auth)
-
-
-# starry = api.media_upload('../starry-000001.gif')
-# # Something here like...
-# api.create_media_metadata(starry.media_id, "A spacescape as seen from a starship in gentle orbit.")
-# api.update_status('Calibrating telemetry...', media_ids=[starry.media_id])
+    for dummy in range(6):
+        status_dict = sv.random_spacescape()
+        minute = 60
+        hour = 60 ** 2
+        # time.sleep(minute)
+        print("\a")
+        # spacescape = GifTweet(GIF_FILENAME)
+        # spacescape.upload_init()
+        # spacescape.upload_append()
+        # spacescape.upload_finalize()
+        # spacescape.set_metadata()
+        # status = '\n'.join([v for v in status_dict.values()])
+        # spacescape.tweet(status)

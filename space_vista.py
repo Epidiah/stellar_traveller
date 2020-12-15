@@ -17,6 +17,38 @@ import pandas as pd
 COLOR_NAMES = pd.read_csv("colors.csv", squeeze=True, names=["color"])
 FLIP_Y = np.array([[1, 0], [0, -1]])
 RNG = np.random.default_rng()
+GERUNDS = [
+    "Approaching",
+    "Passing",
+    "Orbiting",
+    "Transiting",
+    "Arriving at",
+    "Departing from",
+    "Visiting",
+    "Surveying",
+    "Slingshotting through",
+    "Navigating",
+    "De-warping at",
+    "Hyper-exiting near",
+]
+S_NOUN = [
+    "Sensors",
+    "Survey",
+    "Telemetry",
+    "Probes",
+    "Databanks",
+    "Observations",
+    "Spectrum analyses",
+    "Guides",
+]
+S_VERB = [
+    "reveal",
+    "report",
+    "indicate",
+    "suggest",
+    "confirm",
+    "pinpoint",
+]
 
 # Classes
 
@@ -34,8 +66,6 @@ class Vista:
     Followed by all the layers in order of furthest to nearest.
     End with an interior.
     """
-
-    COUNT = 0
 
     def __init__(
         self,
@@ -100,8 +130,7 @@ class Vista:
         return self.width * self.height
 
     def save(self, file_title="starry"):
-        Vista.COUNT += 1
-        file_name = f"{file_title}-{Vista.COUNT:06d}.gif"
+        file_name = f"{file_title}.gif"
         self.frames[0].save(
             file_name,
             save_all=True,
@@ -482,15 +511,19 @@ class AstroGarden(Interior):
 class StellarCafe(Interior):
     def __init__(self, vista, file_path="cafe.png"):
         super().__init__(vista, file_path)
-        self.last_steam = None
-        self.steam_box_1 = [120, 280, 135, 314]
-        self.steam_box_2 = [225, 286, 240, 320]
+        self.last_steaming = None
+        self.steam_box_left = [120, 280, 135, 314]
+        self.steam_box_right = [225, 286, 240, 320]
+        self.left_mug = (RNG.choice([True, False]), False)
+        self.right_mug = (RNG.choice([True, False]), False)
 
     def draw(self, image, drawing_frame, frame_n):
-        if (self.last_steam is None) or (frame_n % 4 == 0):
-            steam = flame_like(self.im, self.steam_box_1)
-            self.last_steam = flame_like(steam, self.steam_box_2)
-        layer_image(image, self.last_steam)
+        if (self.last_steaming is None) or (frame_n % 4 == 0):
+            steam = flame_like(self.im, self.steam_box_left, *self.left_mug)
+            steaming = ImageChops.lighter(self.im, steam)
+            steam = flame_like(steaming, self.steam_box_right, *self.right_mug)
+            self.last_steaming = ImageChops.lighter(steaming, steam)
+        layer_image(image, self.last_steaming)
 
 
 class Engineering(Interior):
@@ -725,26 +758,24 @@ def layer_image(base_im, top_im):
     base_im.paste(top_im, top_im)
 
 
-def flame_like(im, box):
+def flame_like(im, box, left_curl=False, whisp=False, color=None):
     # Make some noise!
     haze = Image.effect_noise(
         [box[2] - box[0], box[3] - box[1]],
         RNG.integers(290, 311),
     ).convert("RGBA")
-    # Now let's shape that noise so it vaguely fits the silhouette of steam
+    x, y = haze.size
+    # Now let's shape that noise so it vaguely fits the silhouette of fire
     drw_haze = ImageDraw.Draw(haze)
     drw_haze.ellipse(
-        [haze.size[0] // -2, 0, haze.size[0] // 2, haze.size[1] // 2], "black"
-    )
-    drw_haze.ellipse(
-        [
-            haze.size[0] // 2,
-            haze.size[1] // 2,
-            int(haze.size[0] * 1.5),
-            haze.size[1] // 2,
-        ],
+        [x * left_curl - x // 2, 0, x * left_curl + x // 2, y // 2],
         "black",
     )
+    if whisp:
+        drw_haze.ellipse(
+            [x * (not left_curl) - x // 2, 0, x * (not left_curl) + x // 2, y // 2],
+            "black",
+        )
     shifts = RNG.integers(-4, 5, 4)
     mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
     drw_mask = ImageDraw.Draw(mask)
@@ -756,7 +787,8 @@ def flame_like(im, box):
     # Fade it out…
     flames.putalpha(96)
     # …and then because I'm too lazy to figure out how to do this the right way…
-    return ImageChops.lighter(im, flames)
+    return flames
+    # return ImageChops.lighter(im, flames)
 
 
 ## Exploratory Functions
@@ -807,6 +839,32 @@ def remixer(im, order=None, inverts=None):
 # Testing
 
 
+class DeckPlan:
+    def __init__(self, *interiors):
+        self.interiors = list(interiors)
+        self.reset_plan()
+
+    def reset_plan(self):
+        self.plan = self.interiors.copy()
+        self.shuffle()
+
+    def shuffle(self):
+        RNG.shuffle(self.plan)
+
+    def pop(self):
+        if len(self.plan) == 1:
+            self.reset_plan()
+        return self.plan.pop()
+
+
+INTERIORS = DeckPlan(
+    partial(Interior, file_path="observation_windows.png"),
+    AstroGarden,
+    Engineering,
+    StellarCafe,
+)
+
+
 class Yule(Interior):
     def __init__(self, vista, file_path="fireplace.png"):
         super().__init__(vista, file_path)
@@ -823,38 +881,65 @@ class Yule(Interior):
         layer_image(image, self.last_flame)
 
 
-# p = Palette()
-# print(p.palette)
-coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
-# p = pd.Series(["Red", "Orange", "Yellow", "Green", "Blue", "Purple"]).apply(
-#     ImageColor.getrgb
-# )
-p = pd.Series([tuple(RNG.integers(0,256,3)) for dummy in range(6)])
-# p = pd.Series(
-#     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for dummy in range(6)]
-# )
-# coords = np.array((-265476613, 300860543, 805398875))
-test = Vista(coords=coords, palette=Palette(p))
-# scp = SplitComplementaryPalette()
-# mp = MonoPalette16(hue=240)
-# test = Vista()
-stars = StarField(test, 500)
+def run_test():
+    # p = Palette()
+    # print(p.palette)
+    coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
+    # coords = np.array((-1748519683, 1552475988, -2018240788))
+    # p = pd.Series(["Red", "Orange", "Yellow", "Green", "Blue", "Purple"]).apply(
+    #     ImageColor.getrgb
+    # )
+    p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
+    # p = pd.Series(
+    #     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for dummy in range(6)]
+    # )
+    # coords = np.array((-265476613, 300860543, 805398875))
+    test = Vista(coords=coords, palette=Palette(p))
+    # scp = SplitComplementaryPalette()
+    # mp = MonoPalette16(hue=240)
+    # test = Vista()
+    stars = StarField(test, 500)
 
-for dummy in range(test.RNG.integers(1, 13)):
-    # RingedPlanet(test)
-    BasePlanet(test)
+    for dummy in range(test.RNG.integers(1, 13)):
+        # RingedPlanet(test)
+        BasePlanet(test)
 
-# for v in range(1,4):
-#     SwiftPlanet(test, velocity=v*-2)
+    # for v in range(1,4):
+    #     SwiftPlanet(test, velocity=v*-2)
 
-# Interior
-# interior = Interior(test, "observation_windows.png")
-# interior = Yule(test)
-interior = AstroGarden(test)
-# interior = Engineering(test)
-# interior = StellarCafe(test)
-test.draw_bodies()
-test.save()
-im = test.palette.get_image()
-im.save("palette.png")
-print("\a")
+    # Interior
+    # interior = Interior(test, "observation_windows.png")
+    # interior = Yule(test)
+    # interior = AstroGarden(test)
+    # interior = Engineering(test)
+    interior = StellarCafe(test)
+    test.draw_bodies()
+    test.save()
+    im = test.palette.get_image()
+    im.save("palette.png")
+    print("\a")
+
+
+def random_spacescape():
+    coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
+    p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
+    spacescape = Vista(coords=coords, palette=Palette(p))
+    stars = StarField(spacescape, spacescape.RNG.integers(450, 551))
+    total_planets = spacescape.RNG.integers(1, 9)
+    for dummy in range(total_planets):
+        BasePlanet(spacescape)
+    interior = INTERIORS.pop()(spacescape)
+    spacescape.draw_bodies()
+    spacescape.save()
+    im = spacescape.palette.get_image()
+    im.save("palette.png")
+    s_noun = RNG.choice(S_NOUN)
+    s_verb = RNG.choice(S_VERB)
+    if s_noun[-1] != "s":
+        s_verb += "s"
+    computer_readout = {
+        "coords": f"{RNG.choice(GERUNDS)} ({spacescape.coords[0]}, {spacescape.coords[1]}, {spacescape.coords[2]})…",
+        "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
+        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+    }
+    return computer_readout
