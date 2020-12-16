@@ -1,12 +1,10 @@
+from requests_oauthlib import OAuth1
+from space_vista import *
+import json
 import os
+import requests
 import sys
 import time
-
-import space_vista as sv
-
-import json
-import requests
-from requests_oauthlib import OAuth1
 # from dotenv import load_dotenv
 
 # load_dotenv()
@@ -168,7 +166,7 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    status_dict = sv.random_spacescape()
+    status_dict = random_spacescape()
     minute = 60
     hour = 60 ** 2
     # time.sleep(67*minute)
