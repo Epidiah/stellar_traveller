@@ -148,9 +148,12 @@ class Vista:
         # )
         subprocess.call(
             [
-                r"vendor/optimizers/gifsicle",
-                ["-O3", "--no-extensions", "--optimize"],
-                [file_name],
+                # r"vendor/optimizers/gifsicle",
+                "gifsicle",
+                file_name,
+                "-O3",
+                "--no-extensions", 
+                "--optimize",
                 "--colors",
                 str(self.palette.n_colors),
                 "--output",
@@ -936,7 +939,9 @@ def random_spacescape():
     coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
     p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(coords=coords, palette=Palette(p))
-    stars = StarField(spacescape, spacescape.RNG.integers(450, 551))
+    warp = spacescape.RNG.integers(1, 4, endpoint=True)
+    for dummy in range(5):
+        StarField(spacescape, spacescape.RNG.integers(50, 151), velocity=warp)
     total_planets = spacescape.RNG.integers(1, 9)
     for dummy in range(total_planets):
         BasePlanet(spacescape)
