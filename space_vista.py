@@ -940,10 +940,11 @@ def random_spacescape():
     p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(coords=coords, palette=Palette(p))
     warp = spacescape.RNG.integers(1, 4, endpoint=True)
-    for dummy in range(5):
+    for dummy in range(2):
         StarField(spacescape, spacescape.RNG.integers(50, 151), velocity=warp)
     total_planets = spacescape.RNG.integers(1, 9)
     for dummy in range(total_planets):
+        print(f'Surveying planet {dummy} of {total_planets}…')
         BasePlanet(spacescape)
     interior = INTERIORS.pop()(spacescape)
     spacescape.draw_bodies()
