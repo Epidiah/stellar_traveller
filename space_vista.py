@@ -4,12 +4,13 @@
 # wonders from various rooms inside our space craft.
 
 
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 from functools import partial
 from itertools import product
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import shelve
 import subprocess
 
 # Constants
@@ -52,10 +53,24 @@ S_VERB = [
 
 # Classes
 
-#################################################################################
-# TO DO: Create a Coordinates class to hold the astronomical locations specific #
-# random number generator.                                                      #
-#################################################################################
+class Coordinates(np.random.Generator):
+    """
+    The random number generator seed for your location in the cosmos.
+    """
+    def __init__(self, coords=None):
+        if coords is None:
+            coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
+        if type(coords) is str:
+            coords = np.array(
+                    [int(sc[:3]+sc[4:7]+sc[8:11]+sc[12:]) for sc in coords.split(' : ')]
+                )
+        self.coords = coords
+        bg = np.random.default_rng(coords + 2_147_483_648).bit_generator
+        super().__init__(bg)
+    def __str__(self):
+        strcoords = [f'{coord:+011}' for coord in self.coords]
+        strcoords = [sc[:3]+"*"+sc[3:6]+"°"+sc[6:9]+'.'+sc[9:] for sc in strcoords]
+        return ' : '.join(strcoords)
 
 
 class Vista:
@@ -76,9 +91,8 @@ class Vista:
         bearing=None,
         length=1200,
     ):
-        self.coords = coords
-        print(f"Approaching ({coords[0]}, {coords[1]}, {coords[2]})…")
-        self.RNG = np.random.default_rng(coords + 2_147_483_648)
+        self.RNG = coords
+        print(f"Approaching coordinates {coords}…")
         self.width = field_width
         if field_height is not None:
             self.height = field_height
@@ -120,8 +134,9 @@ class Vista:
             for dummy in range(self.length)
         )
         drawing_frames = tqdm(
-            ((im, ImageDraw.Draw(im, mode="RGBA")) for im in voids)
-            )
+            ((im, ImageDraw.Draw(im, mode="RGBA")) for im in voids),
+            total=1200,
+        )
         for frame_n, (im, df) in enumerate(drawing_frames):
             for body in self.bodies:
                 body.draw(im, df, frame_n)
@@ -149,7 +164,7 @@ class Vista:
                 "gifsicle",
                 file_name,
                 "-O3",
-                "--no-extensions", 
+                "--no-extensions",
                 "--optimize",
                 "--colors",
                 str(self.palette.n_colors),
@@ -673,6 +688,30 @@ class Palette:
         return plt_im.convert("P")
 
 
+class PastellerPalette(Palette):
+    def fill_shades(self, palette):
+        """
+        Takes a pd.Series of colors in RGB tuple and returns a pd.DataFrame of
+        the full palette of colors with the columns representing the shades.
+        """
+        palette.loc[:, 1] = palette.loc[:, 0]
+
+        def color_jump(color):
+            return tuple((c + 255) // 2 for c in color)
+
+        palette.loc[:, 0] = palette.loc[:, 0].apply(color_jump)
+
+        def color_dive(color, *, s=0):
+            factor = 1 - s * 0.7 / (self.shade_depth)
+            return tuple(int(c * factor) for c in color)
+
+        for shade in range(2, self.shade_depth):
+            palette.loc[:, shade] = palette.loc[:, (shade - 1)].apply(
+                partial(color_dive, s=shade)
+            )
+        return palette
+
+
 class SplitComplementaryPalette(Palette):
     def random_palette(self, color_depth=6):
         base_hue = self.vista.RNG.integers(0, 360)
@@ -751,6 +790,24 @@ class ComplementaryPalette16(Palette):
         return self.fill_shades(palette)
 
 
+class DeckPlan:
+    def __init__(self, *interiors):
+        self.interiors = list(interiors)
+        self.reset_plan()
+
+    def reset_plan(self):
+        self.plan = self.interiors.copy()
+        self.shuffle()
+
+    def shuffle(self):
+        RNG.shuffle(self.plan)
+
+    def pop(self):
+        if len(self.plan) == 1:
+            self.reset_plan()
+        return self.plan.pop()
+
+
 ## Helper Functions
 
 
@@ -790,6 +847,46 @@ def flame_like(im, box, left_curl=False, whisp=False, color=None):
     return flames
     # return ImageChops.lighter(im, flames)
 
+
+def random_spacescape():
+    coords = Coordinates()
+    p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
+    spacescape = Vista(
+        coords=coords, palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p)
+    )
+    stars = StarField(spacescape, coords.integers(450, 551))
+    total_planets = coords.integers(3, 9)
+    for n in range(total_planets):
+        print(f"Surveying planet {n+1} of {total_planets}…")
+        BasePlanet(spacescape)
+    with shelve.open("AstroDecks", writeback=True) as AD:
+        if "interiors" in AD:
+            AD["interiors"].pop()(spacescape)
+        else:
+            AD["interiors"] = DeckPlan(
+                partial(Interior, file_path="observation_windows.png"),
+                AstroGarden,
+                Engineering,
+                StellarCafe,
+            )
+    print("Painting spacescape!")
+    spacescape.save()
+    im = spacescape.palette.get_image()
+    im.save("palette.png")
+    im.close()
+    s_noun = RNG.choice(S_NOUN)
+    s_verb = RNG.choice(S_VERB)
+    if s_noun[-1] != "s":
+        s_verb += "s"
+    computer_readout = {
+        "coords": f"{RNG.choice(GERUNDS)} coordinates {coords}…",
+        "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
+        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+    }
+    return computer_readout
+
+
+# Testing
 
 ## Exploratory Functions
 
@@ -834,35 +931,6 @@ def remixer(im, order=None, inverts=None):
     reorder.append(a)
     reordered_im = Image.merge("RGBA", reorder)
     return reordered_im
-
-
-# Testing
-
-
-class DeckPlan:
-    def __init__(self, *interiors):
-        self.interiors = list(interiors)
-        self.reset_plan()
-
-    def reset_plan(self):
-        self.plan = self.interiors.copy()
-        self.shuffle()
-
-    def shuffle(self):
-        RNG.shuffle(self.plan)
-
-    def pop(self):
-        if len(self.plan) == 1:
-            self.reset_plan()
-        return self.plan.pop()
-
-
-INTERIORS = DeckPlan(
-    partial(Interior, file_path="observation_windows.png"),
-    AstroGarden,
-    Engineering,
-    StellarCafe,
-)
 
 
 class Yule(Interior):
@@ -918,30 +986,3 @@ def run_test():
     im = test.palette.get_image()
     im.save("palette.png")
     print("\a")
-
-
-def random_spacescape():
-    coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
-    p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
-    spacescape = Vista(coords=coords, palette=Palette(p))
-    stars = StarField(spacescape, spacescape.RNG.integers(450, 551))
-    total_planets = spacescape.RNG.integers(3, 9)
-    for n in range(total_planets):
-        print(f'Surveying planet {n+1} of {total_planets}…')
-        BasePlanet(spacescape)
-    interior = INTERIORS.pop()(spacescape)
-    print("Painting spacescape!")
-    spacescape.save()
-    im = spacescape.palette.get_image()
-    im.save("palette.png")
-    im.close()
-    s_noun = RNG.choice(S_NOUN)
-    s_verb = RNG.choice(S_VERB)
-    if s_noun[-1] != "s":
-        s_verb += "s"
-    computer_readout = {
-        "coords": f"{RNG.choice(GERUNDS)} ({spacescape.coords[0]}, {spacescape.coords[1]}, {spacescape.coords[2]})…",
-        "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
-        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
-    }
-    return computer_readout
