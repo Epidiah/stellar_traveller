@@ -121,7 +121,7 @@ class Vista:
         Draws all the bodies on the frames, advancing them after each frame.
         """
         drawing_frames = tqdm(
-            [(im, ImageDraw.Draw(im, mode="RGBA")) for im in self.frames]
+            ((im, ImageDraw.Draw(im, mode="RGBA")) for im in self.frames)
         )
         for frame_n, (im, df) in enumerate(drawing_frames):
             for body in self.bodies:
@@ -943,10 +943,11 @@ def random_spacescape():
     for dummy in range(2):
         StarField(spacescape, spacescape.RNG.integers(50, 151), velocity=warp)
     total_planets = spacescape.RNG.integers(1, 9)
-    for dummy in range(total_planets):
-        print(f'Surveying planet {dummy} of {total_planets}…')
+    for n in range(total_planets):
+        print(f'Surveying planet {n+1} of {total_planets}…')
         BasePlanet(spacescape)
     interior = INTERIORS.pop()(spacescape)
+    print("Painting spacescape!")
     spacescape.draw_bodies()
     spacescape.save()
     im = spacescape.palette.get_image()
