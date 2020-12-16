@@ -11,6 +11,7 @@ from pygifsicle import optimize
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import subprocess
 
 # Constants
 
@@ -140,10 +141,21 @@ class Vista:
             duration=1000 / 24,
             loop=0,
         )
-        optimize(
-            file_name,
-            colors=self.palette.n_colors,
-            options=["-O3", "--no-extensions"],
+        # optimize(
+        #     file_name,
+        #     colors=self.palette.n_colors,
+        #     options=["-O3", "--no-extensions"],
+        # )
+        subprocess.call(
+            [
+                r"vendor/optimizers/gifsicle",
+                ["-O3", "--no-extensions", "--optimize"],
+                [file_name],
+                "--colors",
+                str(self.palette.n_coloers),
+                "--output",
+                file_name,
+            ]
         )
 
 
