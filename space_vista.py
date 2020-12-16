@@ -53,24 +53,32 @@ S_VERB = [
 
 # Classes
 
+
 class Coordinates(np.random.Generator):
     """
     The random number generator seed for your location in the cosmos.
     """
+
     def __init__(self, coords=None):
         if coords is None:
             coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
         if type(coords) is str:
             coords = np.array(
-                    [int(sc[:3]+sc[4:7]+sc[8:11]+sc[12:]) for sc in coords.split(' : ')]
-                )
+                [
+                    int(sc[:3] + sc[4:7] + sc[8:11] + sc[12:])
+                    for sc in coords.split(" : ")
+                ]
+            )
         self.coords = coords
         bg = np.random.default_rng(coords + 2_147_483_648).bit_generator
         super().__init__(bg)
+
     def __str__(self):
-        strcoords = [f'{coord:+011}' for coord in self.coords]
-        strcoords = [sc[:3]+"*"+sc[3:6]+"°"+sc[6:9]+'.'+sc[9:] for sc in strcoords]
-        return ' : '.join(strcoords)
+        strcoords = [f"{coord:+011}" for coord in self.coords]
+        strcoords = [
+            sc[:3] + "*" + sc[3:6] + "°" + sc[6:9] + "." + sc[9:] for sc in strcoords
+        ]
+        return " : ".join(strcoords)
 
 
 class Vista:
@@ -852,23 +860,32 @@ def random_spacescape():
     coords = Coordinates()
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(
-        coords=coords, palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p)
+        coords=coords,
+        palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
     )
     stars = StarField(spacescape, coords.integers(450, 551))
     total_planets = coords.integers(3, 9)
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
         BasePlanet(spacescape)
-    with shelve.open("AstroDecks", writeback=True) as AD:
-        if "interiors" in AD:
-            AD["interiors"].pop()(spacescape)
-        else:
-            AD["interiors"] = DeckPlan(
-                partial(Interior, file_path="observation_windows.png"),
-                AstroGarden,
-                Engineering,
-                StellarCafe,
-            )
+    # with shelve.open("AstroDecks", writeback=True) as AD:
+    #     if "interiors" in AD:
+    #         AD["interiors"].pop()(spacescape)
+    #     else:
+    #         AD["interiors"] = DeckPlan(
+    #             partial(Interior, file_path="observation_windows.png"),
+    #             AstroGarden,
+    #             Engineering,
+    #             StellarCafe,
+    #         )
+    RNG.choice(
+        [
+            partial(Interior, file_path="observation_windows.png"),
+            AstroGarden,
+            Engineering,
+            StellarCafe,
+        ]
+    )(spacescape)
     print("Painting spacescape!")
     spacescape.save()
     im = spacescape.palette.get_image()
