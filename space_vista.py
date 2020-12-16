@@ -152,7 +152,7 @@ class Vista:
                 ["-O3", "--no-extensions", "--optimize"],
                 [file_name],
                 "--colors",
-                str(self.palette.n_coloers),
+                str(self.palette.n_colors),
                 "--output",
                 file_name,
             ]
