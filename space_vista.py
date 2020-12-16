@@ -7,7 +7,6 @@
 from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 from functools import partial
 from itertools import product
-from pygifsicle import optimize
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -102,10 +101,6 @@ class Vista:
         )
         self.bodies = []
         self.length = length
-        self.frames = [
-            Image.new("RGBA", (self.width, self.height), color="Black")
-            for dummy in range(self.length)
-        ]
 
     def add_celestial_body(self, body):
         """
@@ -118,37 +113,39 @@ class Vista:
     def draw_bodies(self):
         """
         Called after all the bodies have been added to Vista, before saving the gif.
-        Draws all the bodies on the frames, advancing them after each frame.
+        Draws all the bodies in the void, advancing them after each frame.
         """
-        drawing_frames = tqdm(
-            ((im, ImageDraw.Draw(im, mode="RGBA")) for im in self.frames)
+        voids = (
+            Image.new("RGBA", (self.width, self.height), color="Black")
+            for dummy in range(self.length)
         )
+        drawing_frames = tqdm(
+            ((im, ImageDraw.Draw(im, mode="RGBA")) for im in voids)
+            )
         for frame_n, (im, df) in enumerate(drawing_frames):
             for body in self.bodies:
                 body.draw(im, df, frame_n)
+            yield im
 
     def total_pixels(self):
         return self.width * self.height
 
     def save(self, file_title="starry"):
         file_name = f"{file_title}.gif"
-        self.frames[0].save(
+        db = self.draw_bodies()
+        first = next(db)
+        first.save(
             file_name,
             save_all=True,
             include_color_table=True,
-            append_images=self.frames[1:],
+            append_images=db,
             optimize=False,
             duration=1000 / 24,
             loop=0,
         )
-        # optimize(
-        #     file_name,
-        #     colors=self.palette.n_colors,
-        #     options=["-O3", "--no-extensions"],
-        # )
+        # Optimizing with gifsicle
         subprocess.call(
             [
-                # r"vendor/optimizers/gifsicle",
                 "gifsicle",
                 file_name,
                 "-O3",
@@ -160,6 +157,7 @@ class Vista:
                 file_name,
             ]
         )
+        first.close()
 
 
 class CelestialBody:
@@ -300,19 +298,6 @@ class StarField(CelestialBody):
             return self.drift(xy, velocity=self.velocity, frame_n=frame_n)
 
         self.star_map["drift"] = self.star_map[["xy"]].apply(star_drift, axis=1)
-
-        # # Might save time by uncommenting this part and commenting out the final
-        # # for loop there. Hard to tell.
-
-        # drifted_xs = self.star_map["drift"].str[0]
-        # drifted_ys = self.star_map["drift"].str[1]
-        # window_x = (drifted_xs >= -self.leeway) & (drifted_xs <= self.vista.width + self.leeway)
-        # window_y = (drifted_ys >= -self.leeway) & (
-        #     drifted_ys <= self.vista.height + self.leeway
-        # )
-        # window = self.star_map[window_x & window_y]
-        # for xy, rgb in window[["drift", "rgb"]].itertuples(index=False, name=None):
-        #     drawing_frame.point(tuple(xy), fill=(*rgb, 255))
 
         for xy, rgb in self.star_map[["drift", "rgb"]].itertuples(
             index=False, name=None
@@ -939,19 +924,17 @@ def random_spacescape():
     coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
     p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(coords=coords, palette=Palette(p))
-    warp = spacescape.RNG.integers(1, 4, endpoint=True)
-    for dummy in range(2):
-        StarField(spacescape, spacescape.RNG.integers(50, 151), velocity=warp)
-    total_planets = spacescape.RNG.integers(1, 9)
+    stars = StarField(spacescape, spacescape.RNG.integers(450, 551))
+    total_planets = spacescape.RNG.integers(3, 9)
     for n in range(total_planets):
         print(f'Surveying planet {n+1} of {total_planets}…')
         BasePlanet(spacescape)
     interior = INTERIORS.pop()(spacescape)
     print("Painting spacescape!")
-    spacescape.draw_bodies()
     spacescape.save()
     im = spacescape.palette.get_image()
     im.save("palette.png")
+    im.close()
     s_noun = RNG.choice(S_NOUN)
     s_verb = RNG.choice(S_VERB)
     if s_noun[-1] != "s":

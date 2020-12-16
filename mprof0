@@ -1,0 +1,29 @@
+Filename: C:\Users\Epidi\Desktop\stellar_traveller\space_vista.py
+
+Line #    Mem usage    Increment   Line Contents
+================================================
+   936     79.1 MiB     79.1 MiB   def random_spacescape():
+   937     79.1 MiB      0.0 MiB       coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
+   938     79.1 MiB      0.0 MiB       p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
+   939     79.5 MiB      0.3 MiB       spacescape = Vista(coords=coords, palette=Palette(p))
+   940     80.3 MiB      0.9 MiB       stars = StarField(spacescape, spacescape.RNG.integers(450, 551))
+   941     80.3 MiB      0.0 MiB       total_planets = spacescape.RNG.integers(1, 9)
+   942     80.4 MiB      0.0 MiB       for n in range(total_planets):
+   943     80.4 MiB      0.0 MiB           print(f'Surveying planet {n+1} of {total_planets}…')
+   944     80.4 MiB      0.1 MiB           BasePlanet(spacescape)
+   945     83.8 MiB      3.4 MiB       interior = INTERIORS.pop()(spacescape)
+   946     83.8 MiB      0.0 MiB       print("Painting spacescape!")
+   947     87.3 MiB      3.5 MiB       spacescape.save()
+   948     89.2 MiB      2.0 MiB       im = spacescape.palette.get_image()
+   949     89.6 MiB      0.3 MiB       im.save("palette.png")
+   950     88.2 MiB      0.0 MiB       im.close()
+   951     88.3 MiB      0.0 MiB       s_noun = RNG.choice(S_NOUN)
+   952     88.3 MiB      0.0 MiB       s_verb = RNG.choice(S_VERB)
+   953     88.3 MiB      0.0 MiB       if s_noun[-1] != "s":
+   954                                     s_verb += "s"
+   955     88.3 MiB      0.0 MiB       computer_readout = {
+   956     88.3 MiB      0.0 MiB           "coords": f"{RNG.choice(GERUNDS)} ({spacescape.coords[0]}, {spacescape.coords[1]}, {spacescape.coords[2]})…",
+   957     88.3 MiB      0.0 MiB           "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
+   958     88.3 MiB      0.0 MiB           "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+   959                                 }
+   960     88.3 MiB      0.0 MiB       return computer_readout
