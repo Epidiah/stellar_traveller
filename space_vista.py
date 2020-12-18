@@ -5,12 +5,19 @@
 
 
 from functools import partial
-from itertools import product
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
+from itertools import cycle, product
+from PIL import (
+    Image,
+    ImageChops,
+    ImageColor,
+    ImageDraw,
+    ImageFilter,
+    ImageFont,
+    ImageMath,
+)
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-import shelve
 import subprocess
 
 # Constants
@@ -106,7 +113,8 @@ class Vista:
             self.height = field_height
         else:
             self.height = field_width
-        self.center = np.array([self.width // 2, self.height // 2])
+        self.size = (self.width, self.height)
+        self.center = np.array(self.size) // 2
         if palette is not None:
             self.palette = palette
         else:
@@ -459,7 +467,7 @@ class CappedPlanet(BasePlanet):
 
         # mask.paste(cap, mask=mask)
         dc.bitmap((0, 0), mask)
-        layer_image(new, cap)
+        new.alpha_composite(cap)
         return new  # new.filter(ImageFilter.UnsharpMask())
 
     def draw(self, image, drawing_frame, frame_n):
@@ -507,7 +515,7 @@ class Interior(CelestialBody):
         return im
 
     def draw(self, image, drawing_frame, frame_n):
-        layer_image(image, self.im)
+        image.alpha_composite(self.im)
 
 
 class AstroGarden(Interior):
@@ -528,7 +536,54 @@ class AstroGarden(Interior):
             im = self.film_strip[2]
         else:
             im = self.film_strip[1]
-        layer_image(image, im)
+        image.alpha_composite(im)
+
+
+class ExtraVehicularActivity(Interior):
+    def __init__(self, vista, file_path="BubbleHelmet.png"):
+        super().__init__(vista, file_path)
+        self.fog = fog_like_alpha(self.vista.size, [100, 220, 300, 420])
+        self.font_color = vista.palette.get_color(1, 0)
+        self.font = ImageFont.truetype('.fonts/HP-15C_Simulator_Font.ttf', 2)
+        self.lines = self.readout()
+
+    def readout(self):
+        lines = [line.ljust(23)+'\n' for line in (
+                "Swords Without Master",
+                "is in",
+                "Worlds Without Master,",
+                "issue 3",
+                "as you well know."
+            )
+        ]
+        return cycle(lines)
+
+    def draw(self, image, drawing_frame, frame_n):
+        fog = ImageChops.multiply(
+            Image.new(
+                "L",
+                image.size,
+                color=int(np.ceil(50 + 10 * np.cos(frame_n / 120 * np.pi))),
+            ),
+            self.fog,
+        )
+        breath = Image.new("RGBA", image.size, "white")
+        breath.putalpha(fog)
+        image.alpha_composite(breath)
+        image.alpha_composite(self.im)
+        # Text between 168, 372 and 190,394
+        if (frame_n % 120) == 0:
+            text = ([next(self.lines) for dummy in range(4)])
+            self.leading_lines = ''.join(text[:3])
+            self.last_line = text[3]
+        drawing_frame.multiline_text(
+                (168,372),
+                text = self.leading_lines + self.last_line[:(frame_n%120)//5],
+                fill = self.font_color,
+                font = self.font,
+                spacing = 2,
+                align = 'left',
+            )
 
 
 class StellarCafe(Interior):
@@ -542,11 +597,11 @@ class StellarCafe(Interior):
 
     def draw(self, image, drawing_frame, frame_n):
         if (self.last_steaming is None) or (frame_n % 4 == 0):
-            steam = flame_like(self.im, self.steam_box_left, *self.left_mug)
+            steam = flame_like(self.im.size, self.steam_box_left, *self.left_mug)
             steaming = ImageChops.lighter(self.im, steam)
-            steam = flame_like(steaming, self.steam_box_right, *self.right_mug)
+            steam = flame_like(steaming.size, self.steam_box_right, *self.right_mug)
             self.last_steaming = ImageChops.lighter(steaming, steam)
-        layer_image(image, self.last_steaming)
+        image.alpha_composite(self.last_steaming)
 
 
 class Engineering(Interior):
@@ -607,7 +662,7 @@ class Engineering(Interior):
             dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
         im.paste(osc, box=(290, 10), mask=mask)
 
-        layer_image(image, im)
+        image.alpha_composite(im)
 
 
 class Palette:
@@ -819,11 +874,7 @@ class DeckPlan:
 ## Helper Functions
 
 
-def layer_image(base_im, top_im):
-    base_im.paste(top_im, top_im)
-
-
-def flame_like(im, box, left_curl=False, whisp=False, color=None):
+def flame_like(full_size, box, left_curl=False, whisp=False, color=None):
     # Make some noise!
     haze = Image.effect_noise(
         [box[2] - box[0], box[3] - box[1]],
@@ -845,15 +896,52 @@ def flame_like(im, box, left_curl=False, whisp=False, color=None):
     mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
     drw_mask = ImageDraw.Draw(mask)
     drw_mask.ellipse(((0, 0) + haze.size + shifts).tolist(), "white")
-    flames = Image.new("RGBA", im.size)
+    flames = Image.new("RGBA", full_size)
     flames.paste(haze, box=box, mask=mask)
     # Now spread it around and blur it!
     flames = flames.effect_spread(2).filter(ImageFilter.GaussianBlur(3))
     # Fade it out…
     flames.putalpha(96)
-    # …and then because I'm too lazy to figure out how to do this the right way…
     return flames
-    # return ImageChops.lighter(im, flames)
+
+
+def fog_like_alpha(full_size, box, color=None):
+    # Make some noise!
+    haze = Image.effect_noise(
+        [box[2] - box[0], box[3] - box[1]],
+        RNG.integers(290, 311),
+    )
+    haze = ImageChops.multiply(haze, haze)
+    rad = Image.radial_gradient("L").resize(haze.size)
+    haze = ImageChops.subtract(haze, rad)
+    # Now let's shape that noise
+    mask = Image.new("L", haze.size, 0)
+    drw_mask = ImageDraw.Draw(mask)
+    drw_mask.ellipse((0, 0) + haze.size, "white")
+    fog = Image.new("L", full_size, color="black")
+    fog.paste(haze, box=box, mask=mask)
+    fog = fog.effect_spread(60).filter(ImageFilter.GaussianBlur(5))
+    return fog
+
+
+# def fog_like(full_size, box, color=None):
+#     # Make some noise!
+#     haze = Image.effect_noise(
+#         [box[2] - box[0], box[3] - box[1]],
+#         RNG.integers(290, 311),
+#     ).convert("RGBA")
+#     haze = ImageChops.multiply(haze, haze)
+#     x, y = haze.size
+#     # Now let's shape that noise
+#     mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
+#     drw_mask = ImageDraw.Draw(mask)
+#     drw_mask.ellipse((0, 0) + haze.size, "white")
+#     fog = Image.new("RGBA", full_size)
+#     fog.paste(haze, box=box, mask=mask)
+#     # Now spread it around and blur it!
+#     fog = fog.filter(ImageFilter.GaussianBlur(12))
+#     # set_transparent_color(fog, (0,0,0))
+#     return fog
 
 
 def random_spacescape():
@@ -868,22 +956,13 @@ def random_spacescape():
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
         BasePlanet(spacescape)
-    # with shelve.open("AstroDecks", writeback=True) as AD:
-    #     if "interiors" in AD:
-    #         AD["interiors"].pop()(spacescape)
-    #     else:
-    #         AD["interiors"] = DeckPlan(
-    #             partial(Interior, file_path="observation_windows.png"),
-    #             AstroGarden,
-    #             Engineering,
-    #             StellarCafe,
-    #         )
     RNG.choice(
         [
             partial(Interior, file_path="observation_windows.png"),
             AstroGarden,
             Engineering,
             StellarCafe,
+            ExtraVehicularActivity,
         ]
     )(spacescape)
     print("Painting spacescape!")
@@ -963,43 +1042,45 @@ class Yule(Interior):
             self.last_flame = self.im
             for sb in self.flame_boxes:
                 self.last_flame = flame_like(self.last_flame, sb)
-        layer_image(image, self.last_flame)
+        image.alpha_composite(self.last_flame)
 
 
 def run_test():
-    # p = Palette()
-    # print(p.palette)
-    coords = RNG.integers(-2_147_483_648, 2_147_483_647, 3)
-    # coords = np.array((-1748519683, 1552475988, -2018240788))
-    # p = pd.Series(["Red", "Orange", "Yellow", "Green", "Blue", "Purple"]).apply(
-    #     ImageColor.getrgb
-    # )
-    p = pd.Series([tuple(RNG.integers(0, 256, 3)) for dummy in range(6)])
-    # p = pd.Series(
-    #     [(RNG.integers(256), RNG.integers(256), RNG.integers(256)) for dummy in range(6)]
-    # )
-    # coords = np.array((-265476613, 300860543, 805398875))
-    test = Vista(coords=coords, palette=Palette(p))
-    # scp = SplitComplementaryPalette()
-    # mp = MonoPalette16(hue=240)
-    # test = Vista()
-    stars = StarField(test, 500)
-
-    for dummy in range(test.RNG.integers(1, 13)):
-        # RingedPlanet(test)
+    coords = Coordinates()
+    p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
+    test = Vista(
+        coords=coords,
+        palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+    )
+    stars = StarField(test, coords.integers(450, 551))
+    total_planets = coords.integers(3, 9)
+    for n in range(total_planets):
+        print(f"Surveying planet {n+1} of {total_planets}…")
         BasePlanet(test)
-
-    # for v in range(1,4):
-    #     SwiftPlanet(test, velocity=v*-2)
-
-    # Interior
-    # interior = Interior(test, "observation_windows.png")
-    # interior = Yule(test)
-    # interior = AstroGarden(test)
-    # interior = Engineering(test)
-    interior = StellarCafe(test)
-    test.draw_bodies()
+    # RNG.choice(
+    #     [
+    #         partial(Interior, file_path="observation_windows.png"),
+    #         AstroGarden,
+    #         Engineering,
+    #         StellarCafe,
+    #     ]
+    # )(test)
+    ExtraVehicularActivity(test)
+    print("Painting spacescape!")
     test.save()
     im = test.palette.get_image()
     im.save("palette.png")
+    im.close()
+    s_noun = RNG.choice(S_NOUN)
+    s_verb = RNG.choice(S_VERB)
+    if s_noun[-1] != "s":
+        s_verb += "s"
+    computer_readout = {
+        "coords": f"{RNG.choice(GERUNDS)} coordinates {coords}…",
+        "star density": f"Star density = {test.bodies[0].n_stars/(test.bodies[0].fieldsize)}",
+        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+    }
     print("\a")
+    for r in computer_readout.values():
+        print(r)
+    return test
