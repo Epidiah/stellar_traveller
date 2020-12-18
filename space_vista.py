@@ -25,7 +25,7 @@ import subprocess
 COLOR_NAMES = pd.read_csv("colors.csv", squeeze=True, names=["color"])
 FLIP_Y = np.array([[1, 0], [0, -1]])
 RNG = np.random.default_rng()
-GERUNDS = [
+COORD_GERUNDS = [
     "Approaching",
     "Passing",
     "Orbiting",
@@ -56,6 +56,22 @@ S_VERB = [
     "suggest",
     "confirm",
     "pinpoint",
+]
+PERSONAL_GERUNDS = [
+    "Performing ",
+    "Initiatinng ",
+    "Actuating ",
+    "Commencing ",
+    "Enjoying ",
+]
+EVAS = [
+    "extra vehicular activity.",
+    "space stroll.",
+    "routine hull maintenance.",
+    "recreational float.",
+    "observational astronomy.",
+    "sample collections.",
+    "zero-g hide and seek.",
 ]
 
 # Classes
@@ -975,10 +991,12 @@ def random_spacescape():
     if s_noun[-1] != "s":
         s_verb += "s"
     computer_readout = {
-        "coords": f"{RNG.choice(GERUNDS)} coordinates {coords}…",
+        "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
         "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
         "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
     }
+    if isinstance(spacescape.bodies[-1], ExtraVehicularActivity):
+        computer_readout['task'] = RNG.choice(PERSONAL_GERUNDS) + RNG.choice(EVAS)
     return computer_readout
 
 
@@ -1076,10 +1094,12 @@ def run_test():
     if s_noun[-1] != "s":
         s_verb += "s"
     computer_readout = {
-        "coords": f"{RNG.choice(GERUNDS)} coordinates {coords}…",
+        "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
         "star density": f"Star density = {test.bodies[0].n_stars/(test.bodies[0].fieldsize)}",
         "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
     }
+    if isinstance(test.bodies[-1], ExtraVehicularActivity):
+        computer_readout['task'] = RNG.choice(PERSONAL_GERUNDS) + RNG.choice(EVAS)
     print("\a")
     for r in computer_readout.values():
         print(r)
