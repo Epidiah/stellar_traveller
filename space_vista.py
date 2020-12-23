@@ -4,7 +4,7 @@
 # wonders from various rooms inside our space craft.
 
 
-from functools import partial
+from functools import partial, reduce
 from itertools import cycle, product
 from PIL import (
     Image,
@@ -39,7 +39,7 @@ COORD_GERUNDS = [
     "De-warping at",
     "Hyper-exiting near",
 ]
-S_NOUN = [
+DETECTOR = [
     "Sensors",
     "Survey",
     "Telemetry",
@@ -49,7 +49,7 @@ S_NOUN = [
     "Spectrum analyses",
     "Guides",
 ]
-S_VERB = [
+DETECTION = [
     "reveal",
     "report",
     "indicate",
@@ -57,21 +57,21 @@ S_VERB = [
     "confirm",
     "pinpoint",
 ]
-PERSONAL_GERUNDS = [
+EVA_GERUNDS = [
     "Performing ",
-    "Initiatinng ",
+    "Initiating ",
     "Actuating ",
     "Commencing ",
     "Enjoying ",
 ]
 EVAS = [
     "extra vehicular activity.",
-    "space stroll.",
+    "a space stroll.",
     "routine hull maintenance.",
-    "recreational float.",
+    "a recreational float.",
     "observational astronomy.",
-    "sample collections.",
-    "zero-g hide and seek.",
+    "collection of rare samples.",
+    "game of zero-g hide and seek.",
 ]
 
 # Classes
@@ -121,6 +121,7 @@ class Vista:
         palette=None,
         bearing=None,
         length=1200,
+        fps=24,
     ):
         self.RNG = coords
         print(f"Approaching coordinates {coords}…")
@@ -147,6 +148,8 @@ class Vista:
         )
         self.bodies = []
         self.length = length
+        self.fps = fps
+        self.orbital_plane = self.RNG.integers(0, 360)
 
     def add_celestial_body(self, body):
         """
@@ -167,7 +170,7 @@ class Vista:
         )
         drawing_frames = tqdm(
             ((im, ImageDraw.Draw(im, mode="RGBA")) for im in voids),
-            total=1200,
+            total=self.length,
         )
         for frame_n, (im, df) in enumerate(drawing_frames):
             for body in self.bodies:
@@ -187,7 +190,7 @@ class Vista:
             include_color_table=True,
             append_images=db,
             optimize=False,
-            duration=1000 / 24,
+            duration=1000 / self.fps,
             loop=0,
         )
         # Optimizing with gifsicle
@@ -195,7 +198,7 @@ class Vista:
             [
                 "gifsicle",
                 file_name,
-                "-O3",
+                "-O2",
                 "--no-extensions",
                 "--optimize",
                 "--colors",
@@ -250,15 +253,31 @@ class CelestialBody:
         # Our rocket runs on that sweet, sweet linear algebra.
         nudge_matrix = self.vista.rot_matrix @ (velocity * frame_n * np.array([1, 0]))
         xy = xy - nudge_matrix
-        # Check for wrap-around before sending it on.
-        return self.atari(xy, velocity)
+        # Mirroring body so it is at both ends of the journey
+        return self.parallel_worlds(xy, velocity)  # self.atari(xy, velocity)
 
-    def atari(self, xy, velocity):
-        cosmic_boundaries = self.vista.length * velocity
+    def parallel_worlds(self, xy, velocity):
+        mirror_vector = self.vista.length * velocity * np.array([1, 0])
         test = xy @ self.vista.rot_matrix
-        if abs(test[0]) > cosmic_boundaries / 2:
-            xy = xy + self.vista.rot_matrix @ (cosmic_boundaries * np.array([1, 0]))
-        return self.cart_to_screen(xy)
+        mirror_xy = xy - self.vista.rot_matrix @ mirror_vector
+        parallel_xy = xy + self.vista.rot_matrix @ mirror_vector
+        # if test[0] > mirror_vector[0]:
+        #     mirror_xy = xy - self.vista.rot_matrix @ mirror_vector
+        # else:
+        #     mirror_xy = xy + self.vista.rot_matrix @ mirror_vector
+        return (
+            self.cart_to_screen(xy),
+            self.cart_to_screen(mirror_xy),
+            self.cart_to_screen(parallel_xy),
+        )
+
+    def set_course(self, xy):
+        """
+        This will take bodies placed on the horizontal field of
+        """
+        return self.cart_to_screen(
+            self.vista.rot_matrix @ self.screen_to_cart(np.array(xy))
+        )
 
 
 class StarField(CelestialBody):
@@ -315,24 +334,12 @@ class StarField(CelestialBody):
             buffer.iloc[:, 0] = buffer["x"] + zone
             full_scroll = full_scroll.append(buffer, ignore_index=True)
         # Put the stars on our path.
-        full_scroll["xy"] = self.rotate_field(full_scroll)
+        full_scroll["xy"] = full_scroll[["x", "y"]].apply(self.set_course, axis=1)
         return full_scroll
 
-    def rotate_field(self, star_map):
+    def parallel_worlds(self, xy, velocity):
         """
-        A helper function for let_there_be_light that fixes all the star coordinates
-        to the path of the starship.
-        """
-        return star_map[["x", "y"]].apply(
-            lambda row: self.cart_to_screen(
-                self.vista.rot_matrix @ self.screen_to_cart(np.array(row))
-            ),
-            axis=1,
-        )
-
-    def atari(self, xy, velocity):
-        """
-        Bypasses the wraparound, which is unneccessary with that huge starfield!
+        Bypasses the paralleling, which is unneccessary with that huge starfield!
         """
         return self.cart_to_screen(xy)
 
@@ -355,30 +362,89 @@ class StarField(CelestialBody):
 class BasePlanet(CelestialBody):
     def __init__(self, vista):
         super().__init__(vista)
-        self.velocity = min(6, self.layer // 3 + 1)
-        min_x = min_y = -10
-        max_x, max_y = 395, 600
-        self.x = self.vista.RNG.integers(min_x, max_x, endpoint=True)
-        self.y = self.vista.RNG.integers(min_y, max_y, endpoint=True)
+        self.velocity = (1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 8, 9, 12)[
+            self.layer + self.vista.RNG.integers(-1, 2)
+        ]
         self.mass = int(
             self.vista.RNG.triangular(
-                4, self.vista.height / 3, self.vista.height / np.sqrt(2)
+                4, self.vista.height / 4, self.vista.height / np.sqrt(2)
             )
+            + self.layer
         )
-        self.fill = self.vista.palette.random_color()
-        self.features = []
+        self.height = self.width = self.mass
+        self.sys_height = self.sys_width = self.mass + 4
+
+        self.hue = self.vista.RNG.integers(self.vista.palette.hue_depth)
+        self.shade = self.vista.RNG.integers(self.vista.palette.shade_depth)
+        self.fill = self.vista.palette.get_color(self.hue, self.shade)
+        self.colorful = self.vista.RNG.choice([True, False], p=[0.2, 0.8])
+        # tilt_from_x rotates the image on the x,y plane
+        self.tilt_from_x = self.vista.RNG.normal(self.vista.orbital_plane, 30)
+        # tilt_from_y rotates the Rings and Satelite features on the y.z plane
+        self.tilt_from_y = self.vista.RNG.integers(-45, 46)
+        # Positive spin means foreground features move faster
+        # Negative spin means background features move faster
+        self.spin = self.vista.RNG.choice([-1, 1])
+        self.features = self.generate_features()
+        self.im = self.planetary_formation()
+        # Initial position of the planet in the field of stars
+        x = self.vista.RNG.integers(0, self.vista.length * self.velocity)
+        y = self.vista.RNG.normal(self.vista.height // 2, self.vista.height // 4)
+        self.x, self.y = self.set_course((x + self.sys_width // 2, y)) - [
+            self.sys_width // 2,
+            self.sys_height // 2,
+        ]
+
+    def generate_features(self):
+        return []
+
+    def planetary_formation(self):
+        self.sys_width = int(
+            max([feature.sys_width for feature in self.features + [self]])
+        )
+        self.sys_height = int(
+            max([feature.sys_height for feature in self.features + [self]])
+        )
+        sys_im = Image.new("RGBA", (self.sys_width, self.sys_height), (0, 0, 0, 0))
+        # Create the planet_mask here and then...
+        planet_mask = sys_im.copy()
+        center = np.array((self.sys_width, self.sys_height)) // 2
+        draw_sys = ImageDraw.Draw(sys_im)
+        draw_mask = ImageDraw.Draw(planet_mask)
+        for feature in self.features:
+            feature.background(center, sys_im, draw_sys)
+        draw_sys.ellipse(
+            (center - self.mass // 2).tolist() + (center + self.mass // 2).tolist(),
+            fill=(*self.fill, 255),
+        )
+        # ...draw on it here so you're only masking the planet.
+        draw_mask.ellipse(
+            (center - self.mass // 2).tolist() + (center + self.mass // 2).tolist(),
+            fill=(*self.fill, 255),
+        )
+        for feature in self.features:
+            feature.foreground(center, sys_im, draw_sys, planet_mask)
+        sys_im = sys_im.rotate(
+            self.tilt_from_x,
+            resample=Image.BICUBIC,
+            expand=True,
+            center=(self.sys_width // 2, self.sys_height // 2),
+            fillcolor=(0, 0, 0, 0),
+        )
+        return sys_im
 
     def draw(self, image, drawing_frame, frame_n):
-        x, y = self.drift(
+        planetary_systems = self.drift(
             np.array([self.x, self.y]),
             velocity=self.velocity,
             frame_n=frame_n,
         )
-        drawing_frame.ellipse(
-            [x, y, x + self.mass, y + self.mass], fill=(*self.fill, 255)
-        )
-        for feature in self.features:
-            feature.draw(image, drawing_frame, frame_n)
+        for x, y in planetary_systems:
+            for feature in self.features:
+                feature.drifting_background(x, y, image, drawing_frame, frame_n)
+            image.paste(self.im, (int(x), int(y)), mask=self.im)
+            for feature in self.features:
+                feature.drifting_foreground(x, y, image, drawing_frame, frame_n)
 
 
 class SwiftPlanet(BasePlanet):
@@ -394,107 +460,432 @@ class SwiftPlanet(BasePlanet):
             )
 
 
-class RingedPlanet(BasePlanet):
-    def __init__(self, vista):
-        super().__init__(vista)
-        self.ring_fill = self.vista.palette.random_color()
-        self.ring_alpha = self.vista.RNG.integers(64, 192)
-        self.ring_inner_r = int(
-            self.vista.RNG.normal(self.mass * 1.25, self.mass * 0.4)
-        )
-        self.ring_outer_r = int(
-            self.vista.RNG.normal(self.ring_inner_r + self.mass / 10, self.mass / 30)
-        )
-        self.ring_inner_h = int(
-            self.vista.RNG.triangular(2, self.mass / 3, self.ring_inner_r)
-        )
-        self.ring_outer_h = int(
-            self.vista.RNG.triangular(
-                self.ring_inner_h,
-                (self.ring_inner_h + self.ring_outer_r) / 2,
-                self.ring_outer_r,
+class FeaturePlanet(BasePlanet):
+    def generate_features(self):
+        features = []
+        # surface features
+        features.append(
+            self.vista.RNG.choice(
+                [Clouds(self), Continents(self), Craters(self)],
             )
         )
-        self.ring_tilt = self.vista.RNG.integers(0, 360)
-        # self.ring_back, self.ring_fore = self.ring_maker()
-        self.im = self.ring_maker()
-
-    def ring_maker(self):
-        diagonal = int(np.sqrt(2 * self.ring_outer_r ** 2))
-        ring = Image.new("RGB", (diagonal, diagonal), color=(0, 0, 0, 0))
-        cntr_x, cntr_y = ring.size[0] // 2, ring.size[1] // 2
-        drw_ring = ImageDraw.Draw(ring)
-        outer_ring = [
-            cntr_x - self.ring_outer_r // 2,
-            cntr_y - self.ring_outer_h // 2,
-            cntr_x + self.ring_outer_r // 2,
-            cntr_y + self.ring_outer_h // 2,
-        ]
-        inner_ring = [
-            cntr_x - self.ring_inner_r // 2,
-            cntr_y - self.ring_inner_h // 2,
-            cntr_x + self.ring_inner_r // 2,
-            cntr_y + self.ring_inner_h // 2,
-        ]
-        planet = [
-            cntr_x - self.mass // 2,
-            cntr_y - self.mass // 2,
-            cntr_x + self.mass // 2,
-            cntr_y + self.mass // 2,
-        ]
-
-        drw_ring.ellipse(outer_ring, fill=(*self.ring_fill, self.ring_alpha))
-        drw_ring.ellipse(inner_ring, fill=(0, 0, 0, 0))
-        fore = ring.crop(box=(0, cntr_y, ring.size[0], ring.size[1]))
-        back = ring.crop(box=(0, 0, ring.size[0], cntr_y))
-        fore = fore.rotate(angle=self.ring_tilt, expand=True, center=(cntr_x, cntr_y))
-        back = back.rotate(angle=self.ring_tilt, expand=True, center=(0, cntr_y))
-        ring = ring.rotate(angle=self.ring_tilt, expand=True, center=(cntr_x, cntr_y))
-        drw_ring.ellipse(planet, fill=(*self.fill, 255))
-        ring.paste(fore)
-        return ring
-
-    def draw(self, image, drawing_frame, frame_n):
-        x, y = self.drift(
-            np.array([self.x, self.y]),
-            velocity=self.velocity,
-            frame_n=frame_n,
-        )
-        image.paste(self.im)
+        # orbital features
+        if self.vista.RNG.integers(4) == 0:
+            features.append(Rings(self))
+            for i in range(int(max(0, self.vista.RNG.normal(3, 1)))):
+                features.append(
+                    Rings(
+                        self,
+                        features[i + 1].diameter,
+                        features[i + 1].ring_height,
+                    )
+                )
+        for moon in range(
+            self.vista.RNG.choice(
+                [0, 1, 2, 3, self.vista.RNG.integers(3, 12)],
+                p=[0.6, 0.25, 0.05, 0.05, 0.05],
+            )
+        ):
+            features.append(Satellite(self))
+        return features
 
 
-class CappedPlanet(BasePlanet):
-    def __init__(self, vista):
-        super().__init__(vista)
-        self.im = self.cap()
+class PlanetaryFeature:
+    def __init__(self, planet):
+        self.planet = planet
+        self.sys_width = 0
+        self.sys_height = 0
 
-    def cap(self):
-        new = Image.new("RGBA", (self.mass + 10, self.mass + 10), (0, 0, 0, 0))
-        x = self.vista.RNG.integers(new.size[0])
-        y = self.vista.RNG.integers(new.size[1])
-        cap = new.copy()
-        dn = ImageDraw.Draw(new)
-        dn.ellipse([5, 5, 5 + self.mass, 5 + self.mass], fill=(*self.fill, 255))
-        mask = new.copy()
-        dc = ImageDraw.Draw(cap)
-        dc.ellipse(
-            [x, y, x + self.mass // 10, y + self.mass // 10], fill=(255, 255, 255, 112)
+    def background(self, center, im, draw_im):
+        pass
+
+    def foreground(self, center, im, draw_im, planet_mask):
+        pass
+
+    def drifting_background(self, x, y, image, drawing_frame, frame_n):
+        pass
+
+    def drifting_foreground(self, x, y, image, drawing_frame, frame_n):
+        pass
+
+
+class Satellite(PlanetaryFeature):
+    def __init__(self, planet):
+        super().__init__(planet)
+        self.vista = self.planet.vista
+        self.colorful = self.planet.colorful
+
+        # Position and orbit
+        self.start_frame = self.planet.vista.RNG.integers(1200)
+        self.orbit_velocity = 1  # self.planet.vista.RNG.integers(1, 3)
+        self.orbit_radius = self.planet.mass * 2 / self.orbit_velocity
+        self.orbit_matrix = np.array(
+            [
+                [np.cos(self.planet.tilt_from_x), -1 * np.sin(self.planet.tilt_from_x)],
+                [np.sin(self.planet.tilt_from_x), np.cos(self.planet.tilt_from_x)],
+            ]
         )
 
-        # mask.paste(cap, mask=mask)
-        dc.bitmap((0, 0), mask)
-        new.alpha_composite(cap)
-        return new  # new.filter(ImageFilter.UnsharpMask())
-
-    def draw(self, image, drawing_frame, frame_n):
-        x, y = self.drift(
-            np.array([self.x, self.y]),
-            velocity=min(6, self.layer // 3 + 1),
-            frame_n=frame_n,
+        # Appearance
+        self.mass = max(
+            1,
+            self.planet.vista.RNG.integers(
+                self.planet.mass // 10, self.planet.mass // 4
+            ),
         )
-        image.paste(self.im, box=(int(x), int(y)))
-        for feature in self.features:
-            feature.draw(image, drawing_frame, frame_n)
+        if self.colorful:
+            self.hue = self.planet.vista.RNG.choice(
+                [
+                    hue
+                    for hue in range(self.planet.vista.palette.hue_depth)
+                    if hue != self.planet.hue
+                ]
+            )
+            self.shade = self.planet.shade
+        else:
+            self.hue = self.planet.hue
+            self.shade = self.planet.vista.RNG.choice(
+                [
+                    shade
+                    for shade in range(self.planet.vista.palette.shade_depth - 1)
+                    if shade != self.planet.shade
+                ]
+            )
+        self.fill = self.planet.vista.palette.get_color(hue=self.hue, shade=self.shade)
+        self.irregular = self.planet.vista.RNG.choice([True, False], p=[0.1, 0.9])
+        if self.mass < 10:
+            self.surface = PlanetaryFeature(self)
+        elif self.irregular:
+            self.surface = Craters(self)
+        else:
+            self.surface = self.planet.vista.RNG.choice(
+                [PlanetaryFeature, Clouds, Continents, Craters],
+                p=[0.1, 0.05, 0.15, 0.7],
+            )(self)
+        self.im = self.generate_sat()
+
+    def generate_sat(self):
+        sat_im = Image.new("RGBA", (self.mass + 4, self.mass + 4), (0, 0, 0, 0))
+        sat_mask = sat_im.copy()
+        draw_sat = ImageDraw.Draw(sat_im)
+        draw_mask = ImageDraw.Draw(sat_mask)
+        x_shift = self.irregular * self.vista.RNG.integers(
+            self.mass // -5, self.mass // 5 + 1
+        )
+        y_shift = self.irregular * self.vista.RNG.integers(
+            self.mass // -5, self.mass // 5 + 1
+        )
+        center = np.array((self.mass + 4, self.mass + 4)) // 2
+        self.surface.background(center, sat_im, draw_sat)
+        draw_sat.ellipse(
+            [2, 2, self.mass + 2 + x_shift, self.mass + 2 + y_shift],
+            fill=(*self.fill, 255),
+        )
+        draw_mask.ellipse(
+            [2, 2, self.mass + 2 + x_shift, self.mass + 2 + y_shift],
+            fill=(*self.fill, 255),
+        )
+        if self.irregular:
+            style = self.vista.RNG.choice(
+                (  # Cut-out Style
+                    [
+                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
+                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
+                        self.mass + 4 + x_shift // 3,
+                        self.mass + 4 + y_shift // 3,
+                    ],
+                    (0, 0, 0, 0),
+                ),
+                (  # Add-on style
+                    [
+                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
+                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
+                        self.mass + 4 + x_shift // 2,
+                        self.mass + 4 + y_shift // 2,
+                    ],
+                    (*self.fill, 255),
+                ),
+            )
+            draw_mask.ellipse(*style)
+            if self.vist.RNG.integers(2) == 0:
+                sat_im.transpose(Image.FLIP_TOP_BOTTOM)
+            sat_im.rotate(self.vista.RNG.integers(360))
+        self.surface.foreground(center, sat_im, draw_sat, sat_mask)
+        sat_im = sat_im.rotate(
+            self.planet.tilt_from_x,
+            resample=Image.BICUBIC,
+            expand=True,
+            center=(self.mass // 2 + 2, self.mass // 2 + 2),
+            fillcolor=(0, 0, 0, 0),
+        )
+        return sat_im
+
+    def oribit_shift(self, x, y, image, frame_n, phase):
+        # Find where the sat is in its orbit around the origin in Cartesian
+        shift_x = self.orbit_radius * np.cos(phase)
+        shift_y = (
+            self.orbit_radius
+            * abs(self.planet.tilt_from_y / 90)
+            * self.planet.spin
+            * np.sin(phase)
+        )
+        # Rotate around the planet's center to fit the planet's tilt from x
+        xy = [shift_x, shift_y] @ self.orbit_matrix
+        # Translate origin from 0,0 to the planet's top-right corner
+        xy += [x, y]
+        # Translate origin from planet's top-right corner to planet's center
+        xy += np.array(self.planet.im.size) // 2
+        # Offset by the distance from the sat's top-right to its center
+        xy -= np.array(self.im.size) // 2
+        return xy
+
+    def drifting_background(self, x, y, image, drawing_frame, frame_n):
+        phase = (
+            (self.orbit_velocity * frame_n + self.start_frame)
+            / self.planet.vista.length
+            * 2
+            * np.pi
+        )
+        if self.planet.tilt_from_y * np.sin(phase) <= 0:
+            x, y = self.oribit_shift(x, y, image, frame_n, phase)
+            image.paste(self.im, (int(x), int(y)), mask=self.im)
+
+    def drifting_foreground(self, x, y, image, drawing_frame, frame_n):
+        phase = (
+            (self.orbit_velocity * frame_n + self.start_frame)
+            / self.planet.vista.length
+            * 2
+            * np.pi
+        )
+        if self.planet.tilt_from_y * np.sin(phase) > 0:
+            x, y = self.oribit_shift(x, y, image, frame_n, phase)
+            image.paste(self.im, (int(x), int(y)), mask=self.im)
+
+
+class Continents(PlanetaryFeature):
+    def __init__(self, planet):
+        super().__init__(planet)
+        if self.planet.colorful:
+            self.land_colors = self.planet.vista.palette.get_color(
+                shade=self.planet.shade
+            )
+        else:
+            self.land_colors = self.planet.vista.palette.get_color(hue=self.planet.hue)
+        self.land_colors = [
+            lc + (255,) for lc in self.land_colors if lc != self.planet.fill
+        ]
+
+    def foreground(self, center, im, draw_im, planet_mask):
+        surface = coastlines(
+            self.planet.vista.RNG, im, self.planet.fill, self.land_colors
+        )
+        im.paste(surface, (0, 0), mask=planet_mask)
+
+
+class Clouds(PlanetaryFeature):
+    def __init__(self, planet):
+        super().__init__(planet)
+        self.n_clouds = self.planet.vista.RNG.integers(
+            1, max(1, int(np.log(self.planet.mass))) + 2
+        )
+        self.cloud_size = (
+            self.planet.mass,
+            self.planet.mass // max(1, (self.n_clouds - 2)),
+        )
+        if self.planet.colorful:
+            self.cloud_colors = self.planet.vista.palette.get_color(
+                shade=self.planet.shade
+            )
+        else:
+            self.cloud_colors = self.planet.vista.palette.get_color(hue=self.planet.hue)
+        self.cloud_colors = [
+            cc + (255,) for cc in self.cloud_colors if cc != self.planet.fill
+        ]
+
+    def foreground(self, center, im, draw_im, planet_mask):
+        surface = im.copy()
+        clouds = [
+            (
+                n,
+                nebula_like(
+                    self.planet.vista.RNG,
+                    foreground_color=tuple(
+                        self.planet.vista.RNG.choice(self.cloud_colors).tolist()
+                    ),
+                    box=self.cloud_size,
+                    background_color=self.planet.fill + (255,),
+                    ensure_wrap=False,
+                    eddies=True,
+                    eddy_colors=self.cloud_colors,
+                ),
+            )
+            for n in range(self.n_clouds)
+        ]
+        for n, cloud in clouds:
+            left_x, top_y = center - self.planet.mass // 2
+            surface.alpha_composite(
+                cloud, dest=(left_x, top_y + self.cloud_size[1] * n)
+            )
+        im.paste(surface, (0, 0), mask=planet_mask)
+
+
+class Craters(PlanetaryFeature):
+    def __init__(self, planet):
+        super().__init__(planet)
+        self.n_craters = self.planet.vista.RNG.integers(1, self.planet.mass // 2 + 2)
+
+    def background(self, center, im, draw_im):
+        pass
+
+    def foreground(self, center, im, draw_im, planet_mask):
+        surface = im.copy()
+        scar_surface = ImageDraw.Draw(surface)
+        left_x, top_y = center - self.planet.mass // 2
+        right_x, bottom_y = center + self.planet.mass // 2
+        for crater in range(self.n_craters):
+            diameter = int(
+                self.planet.vista.RNG.normal(self.planet.mass / 8, self.planet.mass / 8)
+            )
+            x = self.planet.vista.RNG.integers(left_x - diameter, right_x)
+            y = self.planet.vista.RNG.integers(top_y - diameter, bottom_y)
+            hue = self.planet.hue
+            shade = self.planet.vista.RNG.choice(
+                [
+                    shade
+                    for shade in range(self.planet.vista.palette.shade_depth)
+                    if shade != self.planet.shade
+                ]
+            )
+            width = diameter // 10 + self.planet.vista.RNG.integers(3)
+            outline = self.planet.vista.palette.get_color(hue=hue, shade=shade) + (255,)
+            scar_surface.ellipse(
+                [x, y, x + diameter, y + diameter],
+                fill=self.planet.fill,
+                outline=outline,
+                width=width,
+            )
+            ripples = [
+                self.planet.vista.RNG.integers(0, 360, 2)
+                for dummy in range(self.planet.vista.RNG.integers(3))
+            ]
+            decay = 0
+            while width > decay:
+                decay += 1
+                for ripple in ripples:
+                    scar_surface.arc(
+                        [
+                            x - width,
+                            y - width,
+                            x + width + diameter,
+                            y + width + diameter,
+                        ],
+                        start=ripple[0] + 2 * decay,
+                        end=ripple[1] - 2 * decay,
+                        fill=outline,
+                        width=width - decay,
+                    )
+        im.paste(surface, mask=planet_mask)
+
+
+class Rings(PlanetaryFeature):
+    def __init__(self, planet, med_diameter=None, local_height=None):
+        super().__init__(planet)
+        if self.planet.colorful:
+            hue = self.planet.vista.RNG.choice(
+                [
+                    hue
+                    for hue in range(self.planet.vista.palette.hue_depth)
+                    if hue != self.planet.hue
+                ]
+            )
+            shade = self.planet.shade
+        else:
+            hue = self.planet.hue
+            shade = self.planet.vista.RNG.choice(
+                [
+                    shade
+                    for shade in range(self.planet.vista.palette.shade_depth - 2)
+                    if shade != self.planet.shade
+                ]
+            )
+        self.fill = self.planet.vista.palette.get_color(hue=hue, shade=shade)
+        self.alpha = (255,)  # (self.planet.vista.RNG.integers(64, 192),)
+        self.thickness = self.planet.vista.RNG.integers(1, self.planet.mass // 4 + 2)
+        if med_diameter == None:
+            self.med_diameter = self.planet.mass * 2
+        else:
+            self.med_diameter = med_diameter
+        self.diameter = (
+            int(self.planet.vista.RNG.normal(self.med_diameter, self.planet.mass / 6))
+            + self.thickness
+        )
+        if local_height == None:
+            self.ring_height = int(self.diameter * self.planet.tilt_from_y / 90)
+            if self.ring_height == 0:
+                self.ring_height = -1
+            # self.ring_height = int(
+            #     self.planet.vista.RNG.triangular(
+            #         3, self.planet.mass / 20 + 3, self.diameter * 0.9 + 3
+            #     )
+            # )
+        else:
+            self.ring_height = local_height
+        self.sys_width = self.diameter + self.thickness * 2
+        self.sys_height = abs(self.ring_height) + self.thickness * 2
+        self.center = np.array((self.diameter, abs(self.ring_height))) // 2
+
+        # self.inner_diameter = int(
+        #     self.planet.vista.RNG.normal(
+        #         self.planet.mass * 1.25, self.planet.mass * 0.4
+        #     )
+        # )
+        # self.width = self.outer_diameter = int(
+        #     self.planet.vista.RNG.normal(
+        #         self.inner_diameter + self.planet.mass / 10, self.planet.mass / 30
+        #     )
+        # )
+        # self.inner_height = int(
+        #     self.planet.vista.RNG.triangular(2, self.planet.mass / 3, self.inner_diameter)
+        # )
+        # self.height = self.outer_height = int(
+        #     self.planet.vista.RNG.triangular(
+        #         self.inner_height,
+        #         (self.inner_height + self.outer_diameter) / 2,
+        #         self.outer_diameter,
+        #     )
+        # )
+
+    def ring_maker(self, im, center):
+        # x,y = (center - self.center).tolist()
+        # self.ring = Image.new('RGBA', im.size, (0,0,0,0))
+        # self.draw_ring = ImageDraw.Draw(self.ring)
+        # self.draw_ring.ellipse([x,y,x+self.width, y+self.height], fill=self.fill+self.alpha)
+        # self.draw_ring.ellipse(
+        #     (center - np.array((self.inner_diameter, self.inner_height))//2).tolist() +
+        #     (center + np.array((self.inner_diameter, self.inner_height))//2).tolist(),
+        #     fill=(0,0,0,0)
+        #     )
+        x, y = (center - self.center).tolist()
+        self.ring = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        self.draw_ring = ImageDraw.Draw(self.ring)
+        self.draw_ring.ellipse(
+            [x, y, x + self.diameter, y + abs(self.ring_height)],
+            fill=(0, 0, 0, 0),
+            outline=self.fill + self.alpha,
+            width=self.thickness,
+        )
+
+    def background(self, center, im, draw_im):
+        self.ring_maker(im, center)
+        im.alpha_composite(self.ring)
+
+    def foreground(self, center, im, draw_im, planet_mask):
+        x, y = center - self.center
+        background = [0, 0, im.size[0], center[1]]
+        self.draw_ring.rectangle(background, fill=(0, 0, 0, 0))
+        if self.ring_height > 0:
+            self.ring.transpose(Image.FLIP_TOP_BOTTOM)
+        im.alpha_composite(self.ring)
 
 
 class Interior(CelestialBody):
@@ -560,16 +951,18 @@ class ExtraVehicularActivity(Interior):
         super().__init__(vista, file_path)
         self.fog = fog_like_alpha(self.vista.size, [100, 220, 300, 420])
         self.font_color = vista.palette.get_color(1, 0)
-        self.font = ImageFont.truetype('.fonts/HP-15C_Simulator_Font.ttf', 2)
+        self.font = ImageFont.truetype(".fonts/HP-15C_Simulator_Font.ttf", 2)
         self.lines = self.readout()
 
     def readout(self):
-        lines = [line.ljust(23)+'\n' for line in (
+        lines = [
+            line.ljust(23) + "\n"
+            for line in (
                 "Swords Without Master",
                 "is in",
                 "Worlds Without Master,",
                 "issue 3",
-                "as you well know."
+                " --Epidiah Ravachol",
             )
         ]
         return cycle(lines)
@@ -589,17 +982,17 @@ class ExtraVehicularActivity(Interior):
         image.alpha_composite(self.im)
         # Text between 168, 372 and 190,394
         if (frame_n % 120) == 0:
-            text = ([next(self.lines) for dummy in range(4)])
-            self.leading_lines = ''.join(text[:3])
+            text = [next(self.lines) for dummy in range(4)]
+            self.leading_lines = "".join(text[:3])
             self.last_line = text[3]
         drawing_frame.multiline_text(
-                (168,372),
-                text = self.leading_lines + self.last_line[:(frame_n%120)//5],
-                fill = self.font_color,
-                font = self.font,
-                spacing = 2,
-                align = 'left',
-            )
+            (168, 372),
+            text=self.leading_lines + self.last_line[: (frame_n % 120) // 5],
+            fill=self.font_color,
+            font=self.font,
+            spacing=2,
+            align="left",
+        )
 
 
 class StellarCafe(Interior):
@@ -687,24 +1080,24 @@ class Palette:
     Shade, brightest = 0, darkest = -1
     """
 
-    def __init__(self, palette=None, color_depth=6, shade_depth=5):
-        self.color_depth = color_depth
+    def __init__(self, palette=None, hue_depth=6, shade_depth=5):
+        self.hue_depth = hue_depth
         self.shade_depth = shade_depth
         if palette is None:
-            self.palette = self.random_palette(color_depth=6)
+            self.palette = self.random_palette(hue_depth=6)
         elif type(palette) == pd.Series:
             self.palette = self.fill_shades(self.sort_palette(palette).to_frame(name=0))
         elif type(palette) == pd.DataFrame:
             self.palette = palette
         self.n_colors = int(2 ** np.ceil(np.log(self.palette.size + 2) / np.log(2)))
 
-    def random_palette(self, color_depth=6):
+    def random_palette(self, hue_depth=6):
         """
         Returns a pd.DataFrame with colors as the rows, sorted from brightest (hue=0)
-        to darkest (hue=color_depth-1), and shades of the color as the columns,
+        to darkest (hue=hue_depth-1), and shades of the color as the columns,
         sorted from brightest (shade=0) to darkest (shade=shade_depth-1).
         """
-        palette = pd.Series(RNG.choice(COLOR_NAMES, color_depth, replace=False)).apply(
+        palette = pd.Series(RNG.choice(COLOR_NAMES, hue_depth, replace=False)).apply(
             ImageColor.getrgb
         )
         palette = self.sort_palette(palette)
@@ -736,20 +1129,13 @@ class Palette:
             )
         return palette
 
-    def random_color(self, hue=None, shade=None):
-        if hue is not None:
-            return self.palette.iloc[hue].sample().array[0]
-        if shade is not None:
-            return self.palette[:, shade].sample().array[0]
-        return self.palette.sample().T.sample().iloc[0, 0]
-
     def get_color(self, hue=None, shade=None):
         if hue is not None and shade is not None:
             return self.palette.iloc[hue, shade]
         elif hue is not None:
-            return self.palette.iloc[hue, :]
+            return self.palette.iloc[hue, :].tolist()
         elif shade is not None:
-            return self.palette.iloc[:, shade]
+            return self.palette.iloc[:, shade].tolist()
         else:
             raise ValueError("Must have `hue` or `shade` or both, but not neither.")
 
@@ -792,7 +1178,7 @@ class PastellerPalette(Palette):
 
 
 class SplitComplementaryPalette(Palette):
-    def random_palette(self, color_depth=6):
+    def random_palette(self, hue_depth=6):
         base_hue = self.vista.RNG.integers(0, 360)
         support_right = (base_hue + 120) % 360
         support_left = (base_hue - 120) % 360
@@ -812,12 +1198,12 @@ class SplitComplementaryPalette(Palette):
 
 
 class MonoPalette16(Palette):
-    def __init__(self, palette=None, hue=None, color_depth=4, shade_depth=4):
+    def __init__(self, palette=None, hue=None, hue_depth=4, shade_depth=4):
         self.hue = hue % 360
-        super().__init__(palette=None, color_depth=4, shade_depth=4)
+        super().__init__(palette=None, hue_depth=4, shade_depth=4)
         self.n_colors = 16
 
-    def random_palette(self, color_depth=3):
+    def random_palette(self, hue_depth=3):
         if self.hue is not None:
             return self.build_palette(self.hue)
         base_hue = self.vista.RNG.integers(0, 360)
@@ -853,10 +1239,10 @@ class MonoPalette16(Palette):
 
 
 class ComplementaryPalette16(Palette):
-    def __init__(self, palette=None, color_depth=3, shade_depth=4):
-        super().__init__(palette=None, color_depth=3, shade_depth=4)
+    def __init__(self, palette=None, hue_depth=3, shade_depth=4):
+        super().__init__(palette=None, hue_depth=3, shade_depth=4)
 
-    def random_palette(self, color_depth=3):
+    def random_palette(self, hue_depth=3):
         base_hue = self.vista.RNG.integers(0, 360)
         palette = pd.Series(
             [ImageColor.getrgb(f"hsl({base_hue}, {sat}%, 50%)") for sat in (20, 50)]
@@ -869,25 +1255,106 @@ class ComplementaryPalette16(Palette):
         return self.fill_shades(palette)
 
 
-class DeckPlan:
-    def __init__(self, *interiors):
-        self.interiors = list(interiors)
-        self.reset_plan()
-
-    def reset_plan(self):
-        self.plan = self.interiors.copy()
-        self.shuffle()
-
-    def shuffle(self):
-        RNG.shuffle(self.plan)
-
-    def pop(self):
-        if len(self.plan) == 1:
-            self.reset_plan()
-        return self.plan.pop()
-
-
 ## Helper Functions
+
+
+def nebula_like(
+    coords,
+    foreground_color,
+    box=(240, 150),
+    background_color=(0, 0, 0, 0),
+    ensure_wrap=False,
+    eddies=False,
+    eddy_colors=None,
+):
+    sketch = Image.new("RGBA", box, (0, 0, 0, 0))
+    sketcher = ImageDraw.Draw(sketch)
+    width, height = box[0], box[1]
+    for level in (height // 3, height // 3 * 2):
+        attempts = 7
+        while attempts:
+            try:
+                attempts -= 1
+                xs = np.linspace(1, width, 8, endpoint=False)
+                # add caps to ensure the nebula behaves at the ends and wraps around
+                xs = (
+                    np.linspace(-width, 0, 8).tolist()
+                    + [x + coords.integers(-width // 24, width // 24) for x in xs]
+                    + np.linspace(width, width * 2, 8).tolist()
+                )
+                ys = (
+                    [level] * 8
+                    + [coords.normal(level, height // 36) for x in xs[8:-8]]
+                    + [level] * 8
+                )
+                poly = np.linalg.solve(np.vander(xs), ys).tolist()
+                break
+            except np.linalg.LinAlgError:
+                continue
+        else:
+            return sketch
+        points = [
+            (x, reduce(lambda a, b: x * (a + b), poly[:-1], 0) + poly[-1])
+            for x in range(width)
+        ]
+        sketcher.line(points, fill=foreground_color, joint="curve", width=2)
+    for x in range(1, width + 2, width // 2):
+        ImageDraw.floodfill(sketch, (x, int(height / 2)), foreground_color)
+    # Adding eddies and thousand-year-old storms
+    if eddies:
+        if eddies is True:
+            eddies = coords.integers(int(np.log10(width)) + 1)
+        for ed in range(eddies):
+            if eddy_colors is None:
+                eddy_color = foreground_color
+            else:
+                eddy_color = tuple(coords.choice(eddy_colors).tolist())
+            zone = width // eddies
+            ed_height = coords.integers(height // 6, height // 3)
+            ed_width = coords.integers(zone // 6, zone // 3)
+            if ed_height > ed_width:
+                ed_width, ed_height = ed_height, ed_width
+            x = coords.integers(zone * ed, max(2, zone * (1 + ed) - ed_width))
+            y = coords.integers(
+                height // 3 - ed_height // 2, height // 3 * 2 - ed_height // 2
+            )
+            sketcher.ellipse(
+                [x, y, x + ed_width, y + ed_height],
+                fill=eddy_color,
+                outline=background_color,
+                width=coords.integers(0, int(np.log10(width)) + 2),
+            )
+    # Let's smooth it out a bit
+    sketch = sketch.filter(ImageFilter.SMOOTH)
+    return sketch
+
+
+def coastlines(coords, im, sea_color, land_colors):
+    sketch = Image.new("RGBA", im.size, sea_color)
+    sketcher = ImageDraw.Draw(sketch)
+    for n in range(coords.integers(3, 13)):
+        x = coords.integers(0, im.size[0])
+        y = coords.integers(0, im.size[1])
+        path = []
+        for n in range(60 * im.size[0]):
+            new_x, new_y = x, y
+            while new_x == x and new_y == y:
+                new_x += coords.integers(-1, 2)
+                new_y += coords.integers(-1, 2)
+            x, y = new_x, new_y
+            path.append(x)
+            path.append(y)
+        if isinstance(land_colors, list):
+            land_color = tuple(coords.choice(land_colors).tolist())
+        else:
+            land_color = land_colors
+        sketcher.line(path, fill=land_color, width=2, joint="curve")
+    sketch = (
+        sketch.effect_spread(3)
+        # .filter(ImageFilter.GaussianBlur(3))
+        .filter(ImageFilter.SMOOTH)
+    )
+    return sketch
 
 
 def flame_like(full_size, box, left_curl=False, whisp=False, color=None):
@@ -901,12 +1368,12 @@ def flame_like(full_size, box, left_curl=False, whisp=False, color=None):
     drw_haze = ImageDraw.Draw(haze)
     drw_haze.ellipse(
         [x * left_curl - x // 2, 0, x * left_curl + x // 2, y // 2],
-        "black",
+        (0, 0, 0, 0),
     )
     if whisp:
         drw_haze.ellipse(
             [x * (not left_curl) - x // 2, 0, x * (not left_curl) + x // 2, y // 2],
-            "black",
+            (0, 0, 0, 0),
         )
     shifts = RNG.integers(-4, 5, 4)
     mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
@@ -940,38 +1407,19 @@ def fog_like_alpha(full_size, box, color=None):
     return fog
 
 
-# def fog_like(full_size, box, color=None):
-#     # Make some noise!
-#     haze = Image.effect_noise(
-#         [box[2] - box[0], box[3] - box[1]],
-#         RNG.integers(290, 311),
-#     ).convert("RGBA")
-#     haze = ImageChops.multiply(haze, haze)
-#     x, y = haze.size
-#     # Now let's shape that noise
-#     mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
-#     drw_mask = ImageDraw.Draw(mask)
-#     drw_mask.ellipse((0, 0) + haze.size, "white")
-#     fog = Image.new("RGBA", full_size)
-#     fog.paste(haze, box=box, mask=mask)
-#     # Now spread it around and blur it!
-#     fog = fog.filter(ImageFilter.GaussianBlur(12))
-#     # set_transparent_color(fog, (0,0,0))
-#     return fog
-
-
-def random_spacescape():
+def random_spacescape(length=1200):
     coords = Coordinates()
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(
         coords=coords,
         palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+        length=length,
     )
     stars = StarField(spacescape, coords.integers(450, 551))
-    total_planets = coords.integers(3, 9)
+    total_planets = abs(int(coords.normal(5, 1)))
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
-        BasePlanet(spacescape)
+        FeaturePlanet(spacescape)
     RNG.choice(
         [
             partial(Interior, file_path="observation_windows.png"),
@@ -986,8 +1434,8 @@ def random_spacescape():
     im = spacescape.palette.get_image()
     im.save("palette.png")
     im.close()
-    s_noun = RNG.choice(S_NOUN)
-    s_verb = RNG.choice(S_VERB)
+    s_noun = RNG.choice(DETECTOR)
+    s_verb = RNG.choice(DETECTION)
     if s_noun[-1] != "s":
         s_verb += "s"
     computer_readout = {
@@ -996,11 +1444,9 @@ def random_spacescape():
         "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
     }
     if isinstance(spacescape.bodies[-1], ExtraVehicularActivity):
-        computer_readout['task'] = RNG.choice(PERSONAL_GERUNDS) + RNG.choice(EVAS)
+        computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
     return computer_readout
 
-
-# Testing
 
 ## Exploratory Functions
 
@@ -1047,6 +1493,83 @@ def remixer(im, order=None, inverts=None):
     return reordered_im
 
 
+# Testing
+
+
+class GuidanceSystems(Interior):
+    def __init__(self, vista, mirrors=False):
+        super(Interior, self).__init__(vista)
+        self.font = ImageFont.truetype(".fonts/HP-15C_Simulator_Font.ttf", 18)
+        self.mirrors = mirrors
+
+    def draw(self, image, drawing_frame, frame_n):
+        targets = self.vista.bodies[1:-1]
+        fill_colors = cycle(self.vista.palette.get_color(shade=0))
+        for i, body in enumerate(targets):
+            fill = next(fill_colors)
+            drawing_frame.text(
+                (50, 0 + 60 * i),
+                text=f"Planet-{str(i).zfill(2)}",
+                fill=fill,
+                font=self.font,
+                spacing=2,
+                align="left",
+            )
+            for j, (x, y) in enumerate(
+                body.drift(
+                    np.array([body.x, body.y]),
+                    velocity=body.velocity,
+                    frame_n=frame_n,
+                )
+            ):
+                if self.mirrors or j == 0:
+                    drawing_frame.line(
+                        [
+                            150,
+                            60 * i + 20 * j,
+                            x + body.im.size[0] // 2,
+                            y + body.im.size[1] // 2,
+                        ],
+                        fill=fill,
+                    )
+                    xstr = str(int(x)).rjust(5)
+                    ystr = str(int(y)).rjust(5)
+                    drawing_frame.text(
+                        (150, 60 * i + 20 * j),
+                        text=f"{xstr}, {ystr}",
+                        fill="white",
+                        font=self.font,
+                        spacing=2,
+                        align="left",
+                    )
+
+
+class TestPlanet(BasePlanet):
+    def __init__(self, vista):
+        super().__init__(vista)
+        self.velocity = 0
+        self.x = 160
+        self.y = 160
+        self.tilt_from_x = 45
+        self.mass = 80
+        self.sys_height = self.sys_width = self.height = self.width = self.mass
+        self.features = self.generate_features()
+        self.im = self.planetary_formation()
+
+    def generate_features(self):
+        # features = [Continents(self)]
+        features = [Clouds(self)]
+        # features = [Craters(self)]
+        features.append(Rings(self))
+        for i in range(self.vista.RNG.integers(3)):
+            features.append(
+                Rings(self, features[i + 1].diameter, features[i + 1].ring_height)
+            )
+        for moon in range(3):
+            features.append(Satellite(self))
+        return features
+
+
 class Yule(Interior):
     def __init__(self, vista, file_path="fireplace.png"):
         super().__init__(vista, file_path)
@@ -1069,38 +1592,45 @@ def run_test():
     test = Vista(
         coords=coords,
         palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+        # bearing=225,
+        length=1200,
+        fps=24,
     )
     stars = StarField(test, coords.integers(450, 551))
-    total_planets = coords.integers(3, 9)
-    for n in range(total_planets):
-        print(f"Surveying planet {n+1} of {total_planets}…")
-        BasePlanet(test)
+    # f = Guidance_Calibration(test, x=1200, y=200, velocity=6)
+    TestPlanet(test)
+    # total_planets = abs(int(coords.normal(5, 1)))
+    # for n in range(total_planets):
+    #     print(f"Surveying planet {n+1} of {total_planets}…")
+    #     TestPlanet(test)
     # RNG.choice(
     #     [
     #         partial(Interior, file_path="observation_windows.png"),
     #         AstroGarden,
     #         Engineering,
     #         StellarCafe,
+    #         ExtraVehicularActivity,
     #     ]
     # )(test)
-    ExtraVehicularActivity(test)
+    # GuidanceSystems(test)
     print("Painting spacescape!")
-    test.save()
+    test.save("starry")
+
     im = test.palette.get_image()
     im.save("palette.png")
     im.close()
-    s_noun = RNG.choice(S_NOUN)
-    s_verb = RNG.choice(S_VERB)
+    s_noun = RNG.choice(DETECTOR)
+    s_verb = RNG.choice(DETECTION)
     if s_noun[-1] != "s":
         s_verb += "s"
     computer_readout = {
         "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
         "star density": f"Star density = {test.bodies[0].n_stars/(test.bodies[0].fieldsize)}",
-        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+        # "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
     }
     if isinstance(test.bodies[-1], ExtraVehicularActivity):
-        computer_readout['task'] = RNG.choice(PERSONAL_GERUNDS) + RNG.choice(EVAS)
-    print("\a")
+        computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
+    # print("\a")
     for r in computer_readout.values():
         print(r)
     return test

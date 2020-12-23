@@ -167,12 +167,13 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    status_dict = sv.random_spacescape()
-    minute = 60
-    hour = 60 ** 2
-    # time.sleep(67*minute)
-    # print("\a")
-    spacescape = GifTweet(GIF_FILENAME)
+    test = 15728640
+    attempts = 3
+    while (test >= 15728640) and (attempts > 0): # This while loop should be in sv.random_spacescape
+        status_dict = sv.random_spacescape() # That way we can hit the same coords.
+        spacescape = GifTweet(GIF_FILENAME)
+        test = os.stat(GIF_FILENAME).st_size
+        attempts -= 1
     spacescape.upload_init()
     spacescape.upload_append()
     spacescape.upload_finalize()
