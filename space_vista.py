@@ -180,8 +180,7 @@ class Vista:
     def total_pixels(self):
         return self.width * self.height
 
-    def save(self, file_title="starry"):
-        file_name = f"{file_title}.gif"
+    def save(self, file_name="starry.gif"):
         db = self.draw_bodies()
         first = next(db)
         first.save(
@@ -362,9 +361,10 @@ class StarField(CelestialBody):
 class BasePlanet(CelestialBody):
     def __init__(self, vista):
         super().__init__(vista)
-        self.velocity = (1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 8, 9, 12)[
-            self.layer + self.vista.RNG.integers(-1, 2)
-        ]
+        # self.velocity = (1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 8, 9, 12)[
+        #     self.layer + self.vista.RNG.integers(-1, 2)
+        # ]
+        self.velocity = max(1, self.layer // 2 + self.vista.RNG.integers(4))
         self.mass = int(
             self.vista.RNG.triangular(
                 4, self.vista.height / 4, self.vista.height / np.sqrt(2)
@@ -587,24 +587,34 @@ class Satellite(PlanetaryFeature):
         )
         if self.irregular:
             style = self.vista.RNG.choice(
-                (  # Cut-out Style
-                    [
-                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
-                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
-                        self.mass + 4 + x_shift // 3,
-                        self.mass + 4 + y_shift // 3,
-                    ],
-                    (0, 0, 0, 0),
-                ),
-                (  # Add-on style
-                    [
-                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
-                        self.vista.RNG.integers(self.mass // -10, self.mass // 10 + 1),
-                        self.mass + 4 + x_shift // 2,
-                        self.mass + 4 + y_shift // 2,
-                    ],
-                    (*self.fill, 255),
-                ),
+                [
+                    (  # Cut-out Style
+                        [
+                            self.vista.RNG.integers(
+                                self.mass // -10, self.mass // 10 + 1
+                            ),
+                            self.vista.RNG.integers(
+                                self.mass // -10, self.mass // 10 + 1
+                            ),
+                            self.mass + 4 + x_shift // 3,
+                            self.mass + 4 + y_shift // 3,
+                        ],
+                        (0, 0, 0, 0),
+                    ),
+                    (  # Add-on style
+                        [
+                            self.vista.RNG.integers(
+                                self.mass // -10, self.mass // 10 + 1
+                            ),
+                            self.vista.RNG.integers(
+                                self.mass // -10, self.mass // 10 + 1
+                            ),
+                            self.mass + 4 + x_shift // 2,
+                            self.mass + 4 + y_shift // 2,
+                        ],
+                        (*self.fill, 255),
+                    ),
+                ]
             )
             draw_mask.ellipse(*style)
             if self.vist.RNG.integers(2) == 0:
@@ -865,7 +875,7 @@ class Rings(PlanetaryFeature):
         #     (center + np.array((self.inner_diameter, self.inner_height))//2).tolist(),
         #     fill=(0,0,0,0)
         #     )
-        x, y = (center - self.center).tolist()
+        x, y = (center - self.center)
         self.ring = Image.new("RGBA", im.size, (0, 0, 0, 0))
         self.draw_ring = ImageDraw.Draw(self.ring)
         self.draw_ring.ellipse(
@@ -873,6 +883,14 @@ class Rings(PlanetaryFeature):
             fill=(0, 0, 0, 0),
             outline=self.fill + self.alpha,
             width=self.thickness,
+        )
+        # Cut-out for planet
+        clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
+        co_x = center[0] - self.planet.mass//2
+        co_y = center[1] - clearance//2
+        self.draw_ring.ellipse(
+            [x-1, y-1, x + self.planet.mass+1, y + clearance+1],
+            fill=(0, 0, 0, 0),
         )
 
     def background(self, center, im, draw_im):
@@ -1447,6 +1465,42 @@ def random_spacescape(length=1200):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
     return computer_readout
 
+def spacescape(coords=None, length=1200):
+    if coords is None:
+        coords = Coordinates()
+    p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
+    painting = Vista(
+        coords=coords,
+        palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+        length=length,
+    )
+    stars = StarField(painting, coords.integers(450, 551))
+    total_planets = abs(int(coords.normal(5, 1)))
+    for n in range(total_planets):
+        print(f"Surveying planet {n+1} of {total_planets}…")
+        FeaturePlanet(painting)
+    RNG.choice(
+        [
+            partial(Interior, file_path="observation_windows.png"),
+            AstroGarden,
+            Engineering,
+            StellarCafe,
+            ExtraVehicularActivity,
+        ]
+    )(painting)
+    s_noun = RNG.choice(DETECTOR)
+    s_verb = RNG.choice(DETECTION)
+    if s_noun[-1] != "s":
+        s_verb += "s"
+    computer_readout = {
+        "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
+        "star density": f"Star density = {painting.bodies[0].n_stars/(painting.bodies[0].fieldsize)}",
+        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+    }
+    if isinstance(painting.bodies[-1], ExtraVehicularActivity):
+        computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
+    return painting, computer_readout
+
 
 ## Exploratory Functions
 
@@ -1568,22 +1622,6 @@ class TestPlanet(BasePlanet):
         for moon in range(3):
             features.append(Satellite(self))
         return features
-
-
-class Yule(Interior):
-    def __init__(self, vista, file_path="fireplace.png"):
-        super().__init__(vista, file_path)
-        self.last_flame = None
-        # X Between 160 & 230
-        # Y Between 190 & 260
-        self.flame_boxes = [[x, 190, x + 17, 260] for x in range(160, 233, 18)]
-
-    def draw(self, image, drawing_frame, frame_n):
-        if (self.last_flame is None) or (frame_n % 4 == 0):
-            self.last_flame = self.im
-            for sb in self.flame_boxes:
-                self.last_flame = flame_like(self.last_flame, sb)
-        image.alpha_composite(self.last_flame)
 
 
 def run_test():

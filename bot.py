@@ -167,13 +167,20 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-    test = 15728640
-    attempts = 3
-    while (test >= 15728640) and (attempts > 0): # This while loop should be in sv.random_spacescape
-        status_dict = sv.random_spacescape() # That way we can hit the same coords.
-        spacescape = GifTweet(GIF_FILENAME)
+   def bot_painting():
+    attempt = 0
+    limit = file_size = 15728640
+    length = 1200
+    coords = sv.Coordinates()
+    while file_size >= limit and attempt < 3:
+        print(f'Attempt {attempt+1}…')
+        painting, status_dict = sv.spacescape(coords=coords, length=length)
+        print("Painting spacescape!")
+        painting.save(GIF_FILENAME)
         test = os.stat(GIF_FILENAME).st_size
-        attempts -= 1
+        attempts += 1
+        length -= 100
+    spacescape = GifTweet(GIF_FILENAME)
     spacescape.upload_init()
     spacescape.upload_append()
     spacescape.upload_finalize()
