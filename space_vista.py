@@ -1465,7 +1465,7 @@ def random_spacescape(length=1200):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
     return computer_readout
 
-def spacescape(coords=None, length=1200):
+def spacescape(coords=None, length=1200, room=None):
     if coords is None:
         coords = Coordinates()
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
@@ -1479,15 +1479,17 @@ def spacescape(coords=None, length=1200):
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
         FeaturePlanet(painting)
-    RNG.choice(
-        [
-            partial(Interior, file_path="observation_windows.png"),
-            AstroGarden,
-            Engineering,
-            StellarCafe,
-            ExtraVehicularActivity,
-        ]
-    )(painting)
+    if room = None:
+        room = RNG.choice(
+            [
+                partial(Interior, file_path="observation_windows.png"),
+                AstroGarden,
+                Engineering,
+                StellarCafe,
+                ExtraVehicularActivity,
+            ]
+        )
+    room(painting)
     s_noun = RNG.choice(DETECTOR)
     s_verb = RNG.choice(DETECTION)
     if s_noun[-1] != "s":
@@ -1499,7 +1501,7 @@ def spacescape(coords=None, length=1200):
     }
     if isinstance(painting.bodies[-1], ExtraVehicularActivity):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
-    return painting, computer_readout
+    return painting, room, computer_readout
 
 
 ## Exploratory Functions
