@@ -178,7 +178,7 @@ if __name__ == "__main__":
         print("Painting spacescape!")
         painting.save(GIF_FILENAME)
         test = os.stat(GIF_FILENAME).st_size
-        attempts += 1
+        attempt += 1
         length -= 100
     spacescape = GifTweet(GIF_FILENAME)
     spacescape.upload_init()
