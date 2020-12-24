@@ -1479,7 +1479,7 @@ def spacescape(coords=None, length=1200, room=None):
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
         FeaturePlanet(painting)
-    if room = None:
+    if room is None:
         room = RNG.choice(
             [
                 partial(Interior, file_path="observation_windows.png"),
