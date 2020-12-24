@@ -586,6 +586,7 @@ class Satellite(PlanetaryFeature):
             fill=(*self.fill, 255),
         )
         if self.irregular:
+            print('Irregular moon!')
             style = self.vista.RNG.choice(
                 [
                     (  # Cut-out Style
@@ -615,9 +616,9 @@ class Satellite(PlanetaryFeature):
                         (*self.fill, 255),
                     ),
                 ]
-            )
+            ).tolist()
             draw_mask.ellipse(style[0], tuple(style[1]))
-            if self.vist.RNG.integers(2) == 0:
+            if self.vista.RNG.integers(2) == 0:
                 sat_im.transpose(Image.FLIP_TOP_BOTTOM)
             sat_im.rotate(self.vista.RNG.integers(360))
         self.surface.foreground(center, sat_im, draw_sat, sat_mask)
@@ -1623,7 +1624,7 @@ class TestPlanet(BasePlanet):
             features.append(
                 Rings(self, features[i + 1].diameter, features[i + 1].ring_height)
             )
-        for moon in range(3):
+        for moon in range(12):
             features.append(Satellite(self))
         return features
 
