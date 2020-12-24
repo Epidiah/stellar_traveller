@@ -605,10 +605,10 @@ class Satellite(PlanetaryFeature):
                     (  # Add-on style
                         [
                             self.vista.RNG.integers(
-                                self.mass // -10, self.mass // 10 + 1
+                                0, self.mass // 8 + 1
                             ),
                             self.vista.RNG.integers(
-                                self.mass // -10, self.mass // 10 + 1
+                                0, self.mass // 8 + 1
                             ),
                             self.mass + 4 + x_shift // 2,
                             self.mass + 4 + y_shift // 2,
