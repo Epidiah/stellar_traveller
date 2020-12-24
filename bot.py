@@ -167,7 +167,6 @@ class GifTweet(object):
 
 
 if __name__ == "__main__":
-   def bot_painting():
     attempt = 0
     limit = file_size = 15728640
     length = 1200
