@@ -616,7 +616,7 @@ class Satellite(PlanetaryFeature):
                     ),
                 ]
             )
-            draw_mask.ellipse(*style)
+            draw_mask.ellipse(style[0], tuple(style[1]))
             if self.vist.RNG.integers(2) == 0:
                 sat_im.transpose(Image.FLIP_TOP_BOTTOM)
             sat_im.rotate(self.vista.RNG.integers(360))
@@ -885,13 +885,13 @@ class Rings(PlanetaryFeature):
             width=self.thickness,
         )
         # Cut-out for planet
-        # clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
-        # co_x = center[0] - self.planet.mass//2
-        # co_y = center[1] - clearance//2
-        # self.draw_ring.ellipse(
-        #     [x-1, y-1, x + self.planet.mass+1, y + clearance+1],
-        #     fill=(0, 0, 0, 0),
-        # )
+        clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
+        co_x = center[0] - self.planet.width//2
+        co_y = center[1] - clearance//2
+        self.draw_ring.ellipse(
+            [co_x-1, co_y-1, co_x + self.planet.mass+2, co_y + clearance+2],
+            fill=(0, 0, 0, 0),
+        )
 
     def background(self, center, im, draw_im):
         self.ring_maker(im, center)
@@ -1656,7 +1656,7 @@ def run_test():
     # )(test)
     # GuidanceSystems(test)
     print("Painting spacescape!")
-    test.save("starry")
+    test.save("starry.gif")
 
     im = test.palette.get_image()
     im.save("palette.png")
