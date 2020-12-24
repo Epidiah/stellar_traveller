@@ -885,13 +885,13 @@ class Rings(PlanetaryFeature):
             width=self.thickness,
         )
         # Cut-out for planet
-        clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
-        co_x = center[0] - self.planet.mass//2
-        co_y = center[1] - clearance//2
-        self.draw_ring.ellipse(
-            [x-1, y-1, x + self.planet.mass+1, y + clearance+1],
-            fill=(0, 0, 0, 0),
-        )
+        # clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
+        # co_x = center[0] - self.planet.mass//2
+        # co_y = center[1] - clearance//2
+        # self.draw_ring.ellipse(
+        #     [x-1, y-1, x + self.planet.mass+1, y + clearance+1],
+        #     fill=(0, 0, 0, 0),
+        # )
 
     def background(self, center, im, draw_im):
         self.ring_maker(im, center)
