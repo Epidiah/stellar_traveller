@@ -1468,6 +1468,8 @@ def random_spacescape(length=1200):
 def spacescape(coords=None, length=1200, room=None):
     if coords is None:
         coords = Coordinates()
+    elif type(coords) == str:
+        coords = Coordinates(coords)
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
     painting = Vista(
         coords=coords,

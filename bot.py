@@ -170,14 +170,15 @@ if __name__ == "__main__":
     attempt = 0
     limit = file_size = 15728640
     length = 1200
-    coords = sv.Coordinates()
+    coords = str(sv.Coordinates())
     room = None
-    while file_size >= limit and attempt < 3:
+    while file_size >= limit and attempt < 4:
         print(f'Attempt {attempt+1}…')
         painting, room, status_dict = sv.spacescape(coords=coords, length=length, room=room)
         print("Painting spacescape!")
         painting.save(GIF_FILENAME)
-        test = os.stat(GIF_FILENAME).st_size
+        file_size = os.stat(GIF_FILENAME).st_size
+        print(f'File size: {file_size}')
         attempt += 1
         length -= 100
     spacescape = GifTweet(GIF_FILENAME)
