@@ -116,6 +116,7 @@ class Vista:
     def __init__(
         self,
         coords,
+        velocity=None,
         field_width=400,
         field_height=None,
         palette=None,
@@ -125,6 +126,10 @@ class Vista:
     ):
         self.RNG = coords
         print(f"Approaching coordinates {coords}…")
+        if velocity is None:
+            self.velocity = self.RNG.integers(1,4, endpoint=True)
+        else:
+            self.velocity = velocity
         self.width = field_width
         if field_height is not None:
             self.height = field_height
@@ -157,7 +162,7 @@ class Vista:
         """
         self.bodies.append(body)
         layer = len(self.bodies) - 1
-        return layer
+        return layer, self.velocity
 
     def draw_bodies(self):
         """
@@ -216,7 +221,7 @@ class CelestialBody:
 
     def __init__(self, vista):
         self.vista = vista
-        self.layer = self.vista.add_celestial_body(self)
+        self.layer, self.velocity = self.vista.add_celestial_body(self)
 
     def screen_to_cart(self, xy):
         """
@@ -280,12 +285,9 @@ class CelestialBody:
 
 
 class StarField(CelestialBody):
-    def __init__(self, vista, n_stars=500, velocity=None):
+    def __init__(self, vista, n_stars=500):
         super().__init__(vista)
-        if velocity is not None:
-            self.velocity = velocity / 3
-        else:
-            self.velocity = self.vista.RNG.integers(1, 4, endpoint=True) / 3
+        self.velocity /= 3
         hypotenuse = np.ceil(np.sqrt(self.vista.width ** 2 + self.vista.height ** 2))
         self.leeway = (hypotenuse - self.vista.height) // 2
         self.traverse = self.vista.length * self.velocity
@@ -364,7 +366,9 @@ class BasePlanet(CelestialBody):
         # self.velocity = (1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 8, 9, 12)[
         #     self.layer + self.vista.RNG.integers(-1, 2)
         # ]
-        self.velocity = max(1, self.layer // 2 + self.vista.RNG.integers(4))
+        # self.velocity = max(1, self.layer // 2 + self.vista.RNG.integers(4))
+        # self.velocity = 2 
+        self.velocity += self.layer/5
         self.mass = int(
             self.vista.RNG.triangular(
                 4, self.vista.height / 4, self.vista.height / np.sqrt(2)
@@ -387,6 +391,8 @@ class BasePlanet(CelestialBody):
         self.spin = self.vista.RNG.choice([-1, 1])
         self.features = self.generate_features()
         self.im = self.planetary_formation()
+        # Reset sys_dimensions to match reality after rotation
+        self.sys_width, self.sys_height = self.im.size
         # Initial position of the planet in the field of stars
         x = self.vista.RNG.integers(0, self.vista.length * self.velocity)
         y = self.vista.RNG.normal(self.vista.height // 2, self.vista.height // 4)
@@ -636,7 +642,7 @@ class Satellite(PlanetaryFeature):
         shift_x = self.orbit_radius * np.cos(phase)
         shift_y = (
             self.orbit_radius
-            * abs(self.planet.tilt_from_y / 90)
+            * abs(np.sin(np.radians(self.planet.tilt_from_y)))
             * self.planet.spin
             * np.sin(phase)
         )
@@ -657,7 +663,7 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if self.planet.tilt_from_y * np.sin(phase) <= 0:
+        if np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) <= 0:
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
@@ -668,7 +674,7 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if self.planet.tilt_from_y * np.sin(phase) > 0:
+        if np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) > 0:
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
@@ -831,7 +837,7 @@ class Rings(PlanetaryFeature):
             + self.thickness
         )
         if local_height == None:
-            self.ring_height = int(self.diameter * self.planet.tilt_from_y / 90)
+            self.ring_height = int(self.diameter * np.sin(np.radians(self.planet.tilt_from_y)))
             if self.ring_height == 0:
                 self.ring_height = -1
             # self.ring_height = int(
@@ -886,7 +892,7 @@ class Rings(PlanetaryFeature):
             width=self.thickness,
         )
         # Cut-out for planet
-        clearance = abs(int(self.planet.mass * self.planet.tilt_from_y / 90))
+        clearance = abs(int(self.planet.mass * np.sin(np.radians(self.planet.tilt_from_y))))
         co_x = center[0] - self.planet.width//2
         co_y = center[1] - clearance//2
         self.draw_ring.ellipse(
