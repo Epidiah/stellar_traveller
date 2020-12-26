@@ -127,7 +127,7 @@ class Vista:
         self.RNG = coords
         print(f"Approaching coordinates {coords}…")
         if velocity is None:
-            self.velocity = self.RNG.integers(1,4, endpoint=True)
+            self.velocity = self.RNG.integers(1,4)
         else:
             self.velocity = velocity
         self.width = field_width
@@ -202,7 +202,7 @@ class Vista:
             [
                 "gifsicle",
                 file_name,
-                "-O2",
+                "-O3",
                 "--no-extensions",
                 "--optimize",
                 "--colors",
@@ -368,7 +368,7 @@ class BasePlanet(CelestialBody):
         # ]
         # self.velocity = max(1, self.layer // 2 + self.vista.RNG.integers(4))
         # self.velocity = 2 
-        self.velocity += self.layer/5
+        self.velocity += self.velocity/2 + self.layer/5
         self.mass = int(
             self.vista.RNG.triangular(
                 4, self.vista.height / 4, self.vista.height / np.sqrt(2)
@@ -466,7 +466,7 @@ class SwiftPlanet(BasePlanet):
             )
 
 
-class FeaturePlanet(BasePlanet):
+class RandomPlanet(BasePlanet):
     def generate_features(self):
         features = []
         # surface features
@@ -1020,6 +1020,7 @@ class ExtraVehicularActivity(Interior):
         )
 
 
+
 class StellarCafe(Interior):
     def __init__(self, vista, file_path="cafe.png"):
         super().__init__(vista, file_path)
@@ -1030,11 +1031,14 @@ class StellarCafe(Interior):
         self.right_mug = (RNG.choice([True, False]), False)
 
     def draw(self, image, drawing_frame, frame_n):
-        if (self.last_steaming is None) or (frame_n % 4 == 0):
-            steam = flame_like(self.im.size, self.steam_box_left, *self.left_mug)
-            steaming = ImageChops.lighter(self.im, steam)
-            steam = flame_like(steaming.size, self.steam_box_right, *self.right_mug)
-            self.last_steaming = ImageChops.lighter(steaming, steam)
+        if (self.last_steaming is None) or (frame_n % 5 == 0):
+            steam_left = flame_like_alpha(self.im.size, self.steam_box_left, *self.left_mug)
+            steam_right = flame_like_alpha(self.im.size, self.steam_box_right, *self.right_mug)
+            steam = ImageChops.lighter(steam_left, steam_right)
+            steaming = Image.new("RGBA", image.size, "white")
+            steaming.putalpha(steam)
+            self.last_steaming = self.im.copy()
+            self.last_steaming.alpha_composite(steaming)
         image.alpha_composite(self.last_steaming)
 
 
@@ -1381,35 +1385,32 @@ def coastlines(coords, im, sea_color, land_colors):
     )
     return sketch
 
-
-def flame_like(full_size, box, left_curl=False, whisp=False, color=None):
+def flame_like_alpha(full_size, box, left_curl=False, whisp=False):
     # Make some noise!
     haze = Image.effect_noise(
         [box[2] - box[0], box[3] - box[1]],
         RNG.integers(290, 311),
-    ).convert("RGBA")
+    )
     x, y = haze.size
     # Now let's shape that noise so it vaguely fits the silhouette of fire
     drw_haze = ImageDraw.Draw(haze)
     drw_haze.ellipse(
         [x * left_curl - x // 2, 0, x * left_curl + x // 2, y // 2],
-        (0, 0, 0, 0),
+        'black',
     )
     if whisp:
         drw_haze.ellipse(
             [x * (not left_curl) - x // 2, 0, x * (not left_curl) + x // 2, y // 2],
-            (0, 0, 0, 0),
+            'black',
         )
     shifts = RNG.integers(-4, 5, 4)
-    mask = Image.new("RGBA", haze.size, (0, 0, 0, 0))
+    mask = Image.new("L", haze.size, 'black')
     drw_mask = ImageDraw.Draw(mask)
-    drw_mask.ellipse(((0, 0) + haze.size + shifts).tolist(), "white")
-    flames = Image.new("RGBA", full_size)
+    drw_mask.ellipse(((0, 0) + haze.size + shifts).tolist(), 128)
+    flames = Image.new("L", full_size, color="black")
     flames.paste(haze, box=box, mask=mask)
     # Now spread it around and blur it!
     flames = flames.effect_spread(2).filter(ImageFilter.GaussianBlur(3))
-    # Fade it out…
-    flames.putalpha(96)
     return flames
 
 
@@ -1444,7 +1445,7 @@ def random_spacescape(length=1200):
     total_planets = abs(int(coords.normal(5, 1)))
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
-        FeaturePlanet(spacescape)
+        RandomPlanet(spacescape)
     RNG.choice(
         [
             partial(Interior, file_path="observation_windows.png"),
@@ -1487,7 +1488,7 @@ def spacescape(coords=None, length=1200, room=None):
     total_planets = abs(int(coords.normal(5, 1)))
     for n in range(total_planets):
         print(f"Surveying planet {n+1} of {total_planets}…")
-        FeaturePlanet(painting)
+        RandomPlanet(painting)
     if room is None:
         room = RNG.choice(
             [
@@ -1647,20 +1648,20 @@ def run_test():
     )
     stars = StarField(test, coords.integers(450, 551))
     # f = Guidance_Calibration(test, x=1200, y=200, velocity=6)
-    TestPlanet(test)
-    # total_planets = abs(int(coords.normal(5, 1)))
-    # for n in range(total_planets):
-    #     print(f"Surveying planet {n+1} of {total_planets}…")
-    #     TestPlanet(test)
-    # RNG.choice(
-    #     [
-    #         partial(Interior, file_path="observation_windows.png"),
-    #         AstroGarden,
-    #         Engineering,
-    #         StellarCafe,
-    #         ExtraVehicularActivity,
-    #     ]
-    # )(test)
+    # TestPlanet(test)
+    total_planets = abs(int(coords.normal(5, 1)))
+    for n in range(total_planets):
+        print(f"Surveying planet {n+1} of {total_planets}…")
+        RandomPlanet(test)
+    RNG.choice(
+        [
+            # partial(Interior, file_path="observation_windows.png"),
+            # AstroGarden,
+            # Engineering,
+            # StellarCafe,
+            ExtraVehicularActivity,
+        ]
+    )(test)
     # GuidanceSystems(test)
     print("Painting spacescape!")
     test.save("starry.gif")
