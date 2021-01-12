@@ -1,3 +1,7 @@
+# 2021-01-12 a half hour later
+Commit Message: "Uncommented out the various interior choices in random_spacescape."
+* Correcting the most recent commit which accidentally left all but the EVA interior commented out.
+
 # 2021-01-12
 Commit Message: "Preparing for the leap to interactivity."
 * Added numerous comments and documentation to space_vista.py to make things a bit clearer for outside observers and future Eppies who might want to know what's going on. Left off at line 929.

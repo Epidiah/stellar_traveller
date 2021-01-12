@@ -1690,10 +1690,10 @@ def random_spacescape(length=1200):
         RandomPlanet(spacescape)
     RNG.choice(
         [
-            # partial(Interior, file_path="observation_windows.png"),
-            # AstroGarden,
-            # Engineering,
-            # StellarCafe,
+            partial(Interior, file_path="observation_windows.png"),
+            AstroGarden,
+            Engineering,
+            StellarCafe,
             ExtraVehicularActivity,
         ]
     )(spacescape)

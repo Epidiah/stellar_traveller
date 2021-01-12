@@ -1,6 +1,5 @@
 from requests_oauthlib import OAuth1
 import space_vista as sv
-import json
 import os
 import requests
 import sys
