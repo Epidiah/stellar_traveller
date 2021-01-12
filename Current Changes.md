@@ -1,3 +1,12 @@
+# 2021-01-12
+Commit Message: "Preparing for the leap to interactivity."
+* Added numerous comments and documentation to space_vista.py to make things a bit clearer for outside observers and future Eppies who might want to know what's going on. Left off at line 929.
+* Moved somee status content inside the classes that generate it.
+* Add more random number generators for events not tied to your galactic coordinates.
+* Changed random velocity generation so that it favors slower speeds.
+* Created SatelliteCluster object to hold all a planet's satellites and make sure they don't overlap in weird ways as they orbit the planet.
+* Fixed the rotation of the irregular moon so it wouldn't crop at the corners of the image.
+
 # 2020-12-26
 Commit Message: "Brought flame_like in line with fog_like."
 * Switched the steam on the mugs in the StellarCafe to flame_like_alpha and slowed the animation a bit. Looks better and might be a bit more reliable.
