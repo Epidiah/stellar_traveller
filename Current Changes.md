@@ -1,3 +1,18 @@
+# 2021-01-18
+Commit Message: "Switched from GIFs to MP4s."
+* Continuing to add comments and documentation to space_vista.py up to line 1516 now.
+* Moved random selection of the bodies in view inside the Vista class
+* Added distances to the planets to offer a little more room to adjust how they appear and behave.
+* Made the peak in the random distribution of planet masses based on their distance, so that further planets tended to appear smaller.
+* Can now save the animations as .MP4 which may be better suited to this endeavor—less blinking planets, more control over the flame-like and fog-like effects, smaller file formats, still loops on Twitter, and the possibility of adding ambient music in the future.
+* Updated bot.py to Tweet out videos instead of gifs. Death to gifs.
+* Adjusted ExtraVehicularActivity fog so that it looks better in the video format.
+* Adjusted StellarCafe steaming mugs so that they look better in the video format.
+* audio_test.py added to see if we can get audio into these videos. Turns out, we can!
+* Swapped the order the orbit_matrix is multiplied by the xy coordinates of the satellite because I suspect that'll bring the moon orbits in line with the rings. OH AND CONVERTED DEGREES TO RADIANS BECAUSE, DUH!
+* Made a Coordinates a parameter for Palette so that any randomness in the palette is dependent on the location in the galaxy.
+* Broadened the wiggle room irregular moons have in their frame. Hopefully now none of them will be cut off by their borders.
+
 # 2021-01-12 a half hour later
 Commit Message: "Uncommented out the various interior choices in random_spacescape."
 * Correcting the most recent commit which accidentally left all but the EVA interior commented out.

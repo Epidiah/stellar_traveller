@@ -1,5 +1,8 @@
 apscheduler==3.6.3
 Cython==0.29.21
+imageio==2.9.0
+imageio-ffmpeg==0.4.2
+moviepy==1.0.3
 numpy==1.19.2
 pandas==1.1.2
 Pillow==8.0.1

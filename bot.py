@@ -20,7 +20,7 @@ ACCESS_TOKEN_SECRET = os.getenv("VS_A_TOKEN_SECRET")
 # ACCESS_TOKEN = os.getenv("A_TOKEN")
 # ACCESS_TOKEN_SECRET = os.getenv("A_TOKEN_SECRET")
 
-GIF_FILENAME = "starry.gif"
+VIDEO_FILENAME = "starry.mp4"
 
 
 oauth = OAuth1(
@@ -31,13 +31,13 @@ oauth = OAuth1(
 )
 
 
-class GifTweet(object):
+class VidTweet(object):
     def __init__(self, file_name):
         """
-        Defines gif tweet properties
+        Defines video tweet properties
         """
-        self.gif_file_name = file_name
-        self.total_bytes = os.path.getsize(self.gif_file_name)
+        self.video_file_name = file_name
+        self.total_bytes = os.path.getsize(self.video_file_name)
         self.media_id = None
         self.processing_info = None
 
@@ -49,9 +49,9 @@ class GifTweet(object):
 
         request_data = {
             "command": "INIT",
-            "media_type": "image/gif",
+            "media_type": "video/mp4",
             "total_bytes": self.total_bytes,
-            "media_category": "tweet_gif",
+            "media_category": "tweet_video",
         }
 
         req = requests.post(url=MEDIA_ENDPOINT_URL, data=request_data, auth=oauth)
@@ -67,7 +67,7 @@ class GifTweet(object):
         """
         segment_id = 0
         bytes_sent = 0
-        file = open(self.gif_file_name, "rb")
+        file = open(self.video_file_name, "rb")
 
         while bytes_sent < self.total_bytes:
             chunk = file.read(4 * 1024 * 1024)
@@ -154,7 +154,7 @@ class GifTweet(object):
 
     def tweet(self, status):
         """
-        Publishes Tweet with attached gif
+        Publishes Tweet with attached video
         """
         request_data = {
             "status": status,
@@ -175,12 +175,12 @@ if __name__ == "__main__":
         print(f'Attempt {attempt+1}…')
         painting, room, status_dict = sv.spacescape(coords=coords, length=length, room=room)
         print("Painting spacescape!")
-        painting.save(GIF_FILENAME)
-        file_size = os.stat(GIF_FILENAME).st_size
+        painting.save_video(VIDEO_FILENAME)
+        file_size = os.stat(VIDEO_FILENAME).st_size
         print(f'File size: {file_size}')
         attempt += 1
         length -= 100
-    spacescape = GifTweet(GIF_FILENAME)
+    spacescape = VidTweet(VIDEO_FILENAME)
     spacescape.upload_init()
     spacescape.upload_append()
     spacescape.upload_finalize()

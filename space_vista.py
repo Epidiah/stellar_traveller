@@ -3,6 +3,10 @@
 # Here we assemble a randomly generate gif that is a view of some astronomical
 # wonders from various rooms inside our space craft.
 
+import imageio
+import numpy as np
+import pandas as pd
+import subprocess
 
 from collections import Counter
 from functools import partial, reduce
@@ -16,9 +20,6 @@ from PIL import (
     ImageFont,
 )
 from tqdm import tqdm
-import numpy as np
-import pandas as pd
-import subprocess
 
 # Constants
 
@@ -161,18 +162,21 @@ class Vista:
     def __init__(
         self,
         coords,
+        shiploc,
         velocity=None,
         field_width=400,
         field_height=None,
         palette=None,
         bearing=None,
+        layers=9,
         length=1200,
         fps=24,
     ):
-        self.RNG = coords
+        self.coords = coords
+        self.shiploc = shiploc
         print(f"Approaching coordinates {coords}…")
         if velocity is None:
-            self.velocity = self.RNG.choice([1, 2, 3], p=[0.6, 0.3, 0.1])
+            self.velocity = self.coords.choice([1, 2, 3], p=[0.6, 0.3, 0.1])
         else:
             self.velocity = velocity
         self.width = field_width
@@ -185,33 +189,60 @@ class Vista:
         if palette is not None:
             self.palette = palette
         else:
-            self.palette = Palette()
+            self.palette = Palette(self.coords)
         if bearing is not None:
             self.bearing = np.radians(bearing)
         else:
-            self.bearing = np.radians(self.RNG.integers(0, 360))
+            self.bearing = np.radians(self.coords.integers(0, 360))
         self.rot_matrix = np.array(
             [
                 [np.cos(self.bearing), -1 * np.sin(self.bearing)],
                 [np.sin(self.bearing), np.cos(self.bearing)],
             ]
         )
+        self.layers = layers
         self.bodies = []
         self.length = length
         self.fps = fps
-        self.orbital_plane = self.RNG.integers(0, 360)
+        self.orbital_plane = self.coords.integers(0, 360)
         self.status_dict = {}
+        self.generate_view()
+
+    def generate_view(self):
+        """
+        This method is called to randomly create all the bodies in the vista.
+        """
+        self.star_field = StarField(self, self.coords.integers(450, 551))
+        self.planets = []
+        for dummy in range(abs(int(self.coords.normal(3,2)))+1):
+            self.planets.append(RandomPlanet(self, 20))
+        for dummy in range(abs(int(self.coords.normal(2,1)))):
+            self.planets.append(RandomPlanet(self, 12))
+        for dummy in range(abs(int(self.coords.normal(1,1)))):
+            self.planets.append(RandomPlanet(self, 4))
+        self.total_planets = len(self.planets)
+        # for n in range(self.total_planets):
+        #     print(f"Surveying planet {n+1} of {self.total_planets}…")
+        #     self.planets.append(RandomPlanet(self))
+        self.interior = self.shiploc.choice(
+            [
+                partial(Interior, file_path="observation_windows.png"),
+                AstroGarden,
+                Engineering,
+                StellarCafe,
+                ExtraVehicularActivity,
+            ]
+        )(self)
 
     def add_celestial_body(self, body):
         """
-        Called by a CelestialBody to add itself to the Vista.
+        Called by a CelestialBody to add itself to the Vista and to calculate its
+        layer and velocity.
 
-        Returns the layer the CelestialBody resides in and the velocity for that
-        body.
+        Returns the layer and velocity for the body.
         """
+        layer = len(self.bodies)
         self.bodies.append(body)
-        layer = len(self.bodies) - 1
-        # Incldue the velocity here. It might change from self.velocity in the future.
         return layer, self.velocity
 
     def draw_bodies(self):
@@ -239,7 +270,7 @@ class Vista:
         """
         return self.width * self.height
 
-    def save(self, file_name="starry.gif"):
+    def save_gif(self, file_name="starry.gif"):
         """
         Saves and then optimizes the whole Vista as an animated gif.
         """
@@ -269,6 +300,17 @@ class Vista:
             ]
         )
         first.close()
+
+    def save_video(self, file_name="starry.mp4"):
+        """
+        Saves and then optimizes the whole Vista as an animated gif.
+        """
+        slides = (np.asarray(im) for im in self.draw_bodies())
+        imageio.mimwrite(
+            uri=file_name,
+            fps=24,
+            ims=slides,
+        )
 
 
 class CelestialBody:
@@ -385,12 +427,12 @@ class StarField(CelestialBody):
         print(f"Generating {n_stars} stars…")
         # Create a DataFrame of all the star locations
         star_map = pd.DataFrame(
-            self.vista.RNG.integers(
+            self.vista.coords.integers(
                 0, self.vista.length * self.velocity, n_stars, endpoint=True
             ),
             columns=["x"],
         )
-        star_map["y"] = self.vista.RNG.integers(
+        star_map["y"] = self.vista.coords.integers(
             -1 * self.leeway, self.vista.height + self.leeway, n_stars, endpoint=True
         )
         # Remove duplicates and get the actual number of stars
@@ -446,43 +488,39 @@ class BasePlanet(CelestialBody):
     A basic class to subclass other planets from.
     """
 
-    def __init__(self, vista):
+    def __init__(self, vista, distance):
         super().__init__(vista)
+        self.distance = distance
         self.is_planetoid = True
-        # self.velocity = (1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 8, 9, 12)[
-        #     self.layer + self.vista.RNG.integers(-1, 2)
-        # ]
-        # self.velocity = max(1, self.layer // 2 + self.vista.RNG.integers(4))
-        # self.velocity += self.velocity / 2 + self.layer / 5
-        self.velocity *= 1 + self.layer / 10
+        self.velocity *= 1 + self.layer / self.distance
+        print(f"velocity={self.velocity} distance={self.distance} layer={self.layer}")
         self.mass = int(
-            self.vista.RNG.triangular(
-                4, self.vista.height / 4, self.vista.height / np.sqrt(2)
+            self.vista.coords.triangular(
+                4, self.vista.height / self.distance, self.vista.height / np.sqrt(2)
             )
             + self.layer
         )
         self.height = self.width = self.mass
         self.sys_height = self.sys_width = self.mass + 4
 
-        self.hue = self.vista.RNG.integers(self.vista.palette.hue_depth)
-        self.shade = self.vista.RNG.integers(self.vista.palette.shade_depth)
+        self.hue = self.vista.coords.integers(self.vista.palette.hue_depth)
+        self.shade = self.vista.coords.integers(self.vista.palette.shade_depth)
         self.fill = self.vista.palette.get_color(self.hue, self.shade)
-        self.colorful = self.vista.RNG.choice([True, False], p=[0.2, 0.8])
+        self.colorful = self.vista.coords.choice([True, False], p=[0.2, 0.8])
         # tilt_from_x rotates the image on the x,y plane
-        self.tilt_from_x = self.vista.RNG.normal(self.vista.orbital_plane, 30)
+        self.tilt_from_x = self.vista.coords.normal(self.vista.orbital_plane, 30)
         # tilt_from_y rotates the Rings and Satelite features on the y.z plane
-        self.tilt_from_y = self.vista.RNG.integers(-45, 46)
-        # Positive spin means foreground features move faster
-        # Negative spin means background features move faster
-        self.spin = self.vista.RNG.choice([-1, 1])
+        self.tilt_from_y = self.vista.coords.integers(-45, 46)
+        # Spin determines which way around the plaent the satellite orbits
+        self.spin = self.vista.coords.choice([-1, 1])
         self.vista.status_dict[f"Planet {self.layer}"] = Counter()
         self.features = self.generate_features()
         self.im = self.planetary_formation()
         # Reset sys_dimensions to match reality after rotation
         self.sys_width, self.sys_height = self.im.size
         # Initial position of the planet in the field of stars
-        x = self.vista.RNG.integers(0, self.vista.length * self.velocity)
-        y = self.vista.RNG.normal(self.vista.height // 2, self.vista.height // 4)
+        x = self.vista.coords.integers(0, self.vista.length * self.velocity)
+        y = self.vista.coords.normal(self.vista.height // 2, self.vista.height // 4)
         self.x, self.y = self.set_course((x + self.sys_width // 2, y)) - [
             self.sys_width // 2,
             self.sys_height // 2,
@@ -573,14 +611,14 @@ class RandomPlanet(BasePlanet):
         features = []
         # Static surface features
         features.append(
-            self.vista.RNG.choice(
+            self.vista.coords.choice(
                 [Clouds(self), Continents(self), Craters(self)],
             )
         )
         # Static orbital features
-        if self.vista.RNG.integers(4) == 0:
+        if self.vista.coords.integers(4) == 0:
             features.append(Rings(self))
-            for i in range(int(max(0, self.vista.RNG.normal(3, 1)))):
+            for i in range(int(max(0, self.vista.coords.normal(3, 1)))):
                 features.append(
                     Rings(
                         self,
@@ -589,7 +627,7 @@ class RandomPlanet(BasePlanet):
                     )
                 )
         # Dynamic orbital features
-        if self.vista.RNG.choice([True, False], p=[0.6, 0.4]):
+        if self.vista.coords.choice([True, False], p=[0.6, 0.4]):
             features.append(SatelliteCluster(self))
         return features
 
@@ -655,8 +693,8 @@ class SatelliteCluster(PlanetaryFeature):
         Returns a list of all the satellites
         """
         satellites = []
-        n_satellites = self.planet.vista.RNG.choice(
-            [1, 2, 3, self.planet.vista.RNG.integers(3, 12)],
+        n_satellites = self.planet.vista.coords.choice(
+            [1, 2, 3, self.planet.vista.coords.integers(3, 12)],
             p=[0.625, 0.125, 0.125, 0.125],
         )
         for moon in range(n_satellites):
@@ -672,9 +710,9 @@ class SatelliteCluster(PlanetaryFeature):
         satellites might appear to move through each other when one moves ahead of
         the other in the sorting.
         """
-        start_location = self.planet.vista.RNG.choice(list(self.band))
+        start_location = self.planet.vista.coords.choice(list(self.band))
         while set(range(start_location, start_location + sat.mass)) - self.band:
-            start_location = self.planet.vista.RNG.choice(list(self.band))
+            start_location = self.planet.vista.coords.choice(list(self.band))
         self.band -= set(range(start_location, start_location + sat.mass))
         return start_location
 
@@ -734,12 +772,12 @@ class Satellite(PlanetaryFeature):
         # Setting the appearance of the satellite
         self.mass = max(
             1,
-            self.planet.vista.RNG.integers(
+            self.planet.vista.coords.integers(
                 self.planet.mass // 10, self.planet.mass // 4
             ),
         )
         if self.colorful:
-            self.hue = self.planet.vista.RNG.choice(
+            self.hue = self.planet.vista.coords.choice(
                 [
                     hue
                     for hue in range(self.planet.vista.palette.hue_depth)
@@ -749,7 +787,7 @@ class Satellite(PlanetaryFeature):
             self.shade = self.planet.shade
         else:
             self.hue = self.planet.hue
-            self.shade = self.planet.vista.RNG.choice(
+            self.shade = self.planet.vista.coords.choice(
                 [
                     shade
                     for shade in range(self.planet.vista.palette.shade_depth - 1)
@@ -757,7 +795,7 @@ class Satellite(PlanetaryFeature):
                 ]
             )
         self.fill = self.planet.vista.palette.get_color(hue=self.hue, shade=self.shade)
-        self.irregular = self.planet.vista.RNG.choice([True, False], p=[0.1, 0.9])
+        self.irregular = self.planet.vista.coords.choice([True, False], p=[0.1, 0.9])
         if self.irregular:
             self.vista.status_dict[f"Planet {self.planet.layer}"]["irregular moon"] = +1
         else:
@@ -767,19 +805,19 @@ class Satellite(PlanetaryFeature):
         elif self.irregular:
             self.surface = Craters(self)
         else:
-            self.surface = self.planet.vista.RNG.choice(
+            self.surface = self.planet.vista.coords.choice(
                 [PlanetaryFeature, Clouds, Continents, Craters],
                 p=[0.1, 0.05, 0.15, 0.7],
             )(self)
         self.im = self.generate_sat()
 
         # Setting the orbit's position and velocity.
-        self.orbit_velocity = 1  # self.planet.vista.RNG.integers(1, 3)
+        self.orbit_velocity = 1  # self.planet.vista.coords.integers(1, 3)
         self.orbit_radius = self.planet.mass * 2 / self.orbit_velocity
         self.orbit_matrix = np.array(
             [
-                [np.cos(self.planet.tilt_from_x), -1 * np.sin(self.planet.tilt_from_x)],
-                [np.sin(self.planet.tilt_from_x), np.cos(self.planet.tilt_from_x)],
+                [np.cos(np.radians(self.planet.tilt_from_x)), -1 * np.sin(np.radians(self.planet.tilt_from_x))],
+                [np.sin(np.radians(self.planet.tilt_from_x)), np.cos(np.radians(self.planet.tilt_from_x))],
             ]
         )
         self.start_location = self.cluster.get_start_location(self)
@@ -792,38 +830,38 @@ class Satellite(PlanetaryFeature):
 
         Returns an PIL.Image of the Satellite with its static features.
         """
-        sat_im = Image.new("RGBA", (self.mass + 4, self.mass + 4), (0, 0, 0, 0))
+        sat_im = Image.new("RGBA", (self.mass + 10, self.mass + 10), (0, 0, 0, 0))
         sat_mask = sat_im.copy()
         draw_sat = ImageDraw.Draw(sat_im)
         draw_mask = ImageDraw.Draw(sat_mask)
-        x_shift = self.irregular * self.vista.RNG.integers(
+        x_shift = self.irregular * self.vista.coords.integers(
             self.mass // -5, self.mass // 5 + 1
         )
-        y_shift = self.irregular * self.vista.RNG.integers(
+        y_shift = self.irregular * self.vista.coords.integers(
             self.mass // -5, self.mass // 5 + 1
         )
-        center = np.array((self.mass + 4, self.mass + 4)) // 2
+        center = np.array((self.mass + 10, self.mass + 10)) // 2
         self.surface.background(center, sat_im, draw_sat)
         draw_sat.ellipse(
-            [2, 2, self.mass + 2 + x_shift, self.mass + 2 + y_shift],
+            [5, 5, self.mass + x_shift, self.mass + y_shift],
             fill=(*self.fill, 255),
         )
         draw_mask.ellipse(
-            [2, 2, self.mass + 2 + x_shift, self.mass + 2 + y_shift],
+            [5, 5, self.mass + x_shift, self.mass + y_shift],
             fill=(*self.fill, 255),
         )
 
         # A small proportion of moons will be irregular in shape.
         if self.irregular:
             print("Irregular moon!")
-            style = self.vista.RNG.choice(
+            style = self.vista.coords.choice(
                 [
                     (  # Cut-out Style
                         [
-                            self.vista.RNG.integers(
+                            self.vista.coords.integers(
                                 self.mass // -10, self.mass // 10 + 1
                             ),
-                            self.vista.RNG.integers(
+                            self.vista.coords.integers(
                                 self.mass // -10, self.mass // 10 + 1
                             ),
                             self.mass + 4 + x_shift // 3,
@@ -833,8 +871,8 @@ class Satellite(PlanetaryFeature):
                     ),
                     (  # Add-on style
                         [
-                            self.vista.RNG.integers(0, self.mass // 8 + 1),
-                            self.vista.RNG.integers(0, self.mass // 8 + 1),
+                            self.vista.coords.integers(0, self.mass // 8 + 1),
+                            self.vista.coords.integers(0, self.mass // 8 + 1),
                             self.mass + 4 + x_shift // 2,
                             self.mass + 4 + y_shift // 2,
                         ],
@@ -843,10 +881,10 @@ class Satellite(PlanetaryFeature):
                 ]
             ).tolist()
             draw_mask.ellipse(style[0], tuple(style[1]))
-            if self.vista.RNG.integers(2) == 0:
+            if self.vista.coords.integers(2) == 0:
                 sat_im.transpose(Image.FLIP_TOP_BOTTOM)
             sat_im.rotate(
-                self.vista.RNG.integers(360),
+                self.vista.coords.integers(360),
                 resample=Image.BICUBIC,
                 expand=True,
                 center=(self.mass // 2 + 2, self.mass // 2 + 2),
@@ -861,14 +899,6 @@ class Satellite(PlanetaryFeature):
             fillcolor=(0, 0, 0, 0),
         )
         return sat_im
-
-    # def set_start_location(self, start_location):
-    #     """
-    #     This method is called by the SatelliteCluster to put the Satellite somewhere
-    #     in orbit where it doesn't accidentally overlap another Satellite at the wrong
-    #     time.
-    #     """
-    #     self.start_location = start_location
 
     def oribit_shift(self, x, y, image, frame_n, phase):
         """
@@ -906,7 +936,7 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) <= 0:
+        if self.planet.spin * np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) <= 0:
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
@@ -921,12 +951,16 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) > 0:
+        if self.planet.spin * np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) > 0:
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
 
 class Continents(PlanetaryFeature):
+    """
+    A static PlanetaryFeature that resembles coastlines and continents.
+    """
+
     def __init__(self, planet):
         super().__init__(planet)
         if self.planet.colorful:
@@ -938,15 +972,19 @@ class Continents(PlanetaryFeature):
         self.land_colors = [
             lc + (255,) for lc in self.land_colors if lc != self.planet.fill
         ]
-        self.n_continents = self.planet.vista.RNG.integers(3, 13)
+        self.n_continents = self.planet.vista.coords.integers(3, 13)
         if self.planet.is_planetoid:
             self.planet.vista.status_dict[f"Planet {self.planet.layer}"][
                 "land masses"
             ] = self.n_continents
 
     def foreground(self, center, im, draw_im, planet_mask):
+        """
+        Called once to draw roughly self.n_continents number of continents across
+        the surface of the planet's image.
+        """
         surface = coastlines(
-            self.planet.vista.RNG,
+            self.planet.vista.coords,
             im,
             self.n_continents,
             self.planet.fill,
@@ -956,9 +994,14 @@ class Continents(PlanetaryFeature):
 
 
 class Clouds(PlanetaryFeature):
+    """
+    A static PlanetaryFeature that approximates great bands of clouds like those found
+    on gas giants, as well as a few stable elliptical storms.
+    """
+
     def __init__(self, planet):
         super().__init__(planet)
-        self.n_clouds = self.planet.vista.RNG.integers(
+        self.n_clouds = self.planet.vista.coords.integers(
             1, max(1, int(np.log(self.planet.mass))) + 2
         )
         if self.planet.is_planetoid:
@@ -983,14 +1026,18 @@ class Clouds(PlanetaryFeature):
         ]
 
     def foreground(self, center, im, draw_im, planet_mask):
+        """
+        Called once to draw roughly self.n_clouds number of cloud bands across
+        the surface of the planet's image.
+        """
         surface = im.copy()
         clouds = [
             (
                 n,
                 nebula_like(
-                    self.planet.vista.RNG,
+                    self.planet.vista.coords,
                     foreground_color=tuple(
-                        self.planet.vista.RNG.choice(self.cloud_colors).tolist()
+                        self.planet.vista.coords.choice(self.cloud_colors).tolist()
                     ),
                     box=self.cloud_size,
                     background_color=self.planet.fill + (255,),
@@ -1010,37 +1057,44 @@ class Clouds(PlanetaryFeature):
 
 
 class Craters(PlanetaryFeature):
+    """
+    A static PlanetaryFeature that resembles volcanic or impact craters.
+    """
+
     def __init__(self, planet):
         super().__init__(planet)
-        self.n_craters = self.planet.vista.RNG.integers(1, self.planet.mass // 2 + 2)
+        self.n_craters = self.planet.vista.coords.integers(1, self.planet.mass // 2 + 2)
         if self.planet.is_planetoid:
             self.planet.vista.status_dict[f"Planet {self.planet.layer}"][
                 "craters"
             ] = self.n_craters
 
-    def background(self, center, im, draw_im):
-        pass
-
     def foreground(self, center, im, draw_im, planet_mask):
+        """
+        Called once to draw roughly self.n_ccraters number of craters across
+        the surface of the planet's image.
+        """
         surface = im.copy()
         scar_surface = ImageDraw.Draw(surface)
         left_x, top_y = center - self.planet.mass // 2
         right_x, bottom_y = center + self.planet.mass // 2
         for crater in range(self.n_craters):
             diameter = int(
-                self.planet.vista.RNG.normal(self.planet.mass / 8, self.planet.mass / 8)
+                self.planet.vista.coords.normal(
+                    self.planet.mass / 8, self.planet.mass / 8
+                )
             )
-            x = self.planet.vista.RNG.integers(left_x - diameter, right_x)
-            y = self.planet.vista.RNG.integers(top_y - diameter, bottom_y)
+            x = self.planet.vista.coords.integers(left_x - diameter, right_x)
+            y = self.planet.vista.coords.integers(top_y - diameter, bottom_y)
             hue = self.planet.hue
-            shade = self.planet.vista.RNG.choice(
+            shade = self.planet.vista.coords.choice(
                 [
                     shade
                     for shade in range(self.planet.vista.palette.shade_depth)
                     if shade != self.planet.shade
                 ]
             )
-            width = diameter // 10 + self.planet.vista.RNG.integers(3)
+            width = diameter // 10 + self.planet.vista.coords.integers(3)
             outline = self.planet.vista.palette.get_color(hue=hue, shade=shade) + (255,)
             scar_surface.ellipse(
                 [x, y, x + diameter, y + diameter],
@@ -1049,8 +1103,8 @@ class Craters(PlanetaryFeature):
                 width=width,
             )
             ripples = [
-                self.planet.vista.RNG.integers(0, 360, 2)
-                for dummy in range(self.planet.vista.RNG.integers(3))
+                self.planet.vista.coords.integers(0, 360, 2)
+                for dummy in range(self.planet.vista.coords.integers(3))
             ]
             decay = 0
             while width > decay:
@@ -1072,10 +1126,14 @@ class Craters(PlanetaryFeature):
 
 
 class Rings(PlanetaryFeature):
+    """
+    A static PlanetaryFeature that resembles rings around the planet.
+    """
+
     def __init__(self, planet, med_diameter=None, local_height=None):
         super().__init__(planet)
         if self.planet.colorful:
-            hue = self.planet.vista.RNG.choice(
+            hue = self.planet.vista.coords.choice(
                 [
                     hue
                     for hue in range(self.planet.vista.palette.hue_depth)
@@ -1085,7 +1143,7 @@ class Rings(PlanetaryFeature):
             shade = self.planet.shade
         else:
             hue = self.planet.hue
-            shade = self.planet.vista.RNG.choice(
+            shade = self.planet.vista.coords.choice(
                 [
                     shade
                     for shade in range(self.planet.vista.palette.shade_depth - 2)
@@ -1093,14 +1151,16 @@ class Rings(PlanetaryFeature):
                 ]
             )
         self.fill = self.planet.vista.palette.get_color(hue=hue, shade=shade)
-        self.alpha = (255,)  # (self.planet.vista.RNG.integers(64, 192),)
-        self.thickness = self.planet.vista.RNG.integers(1, self.planet.mass // 4 + 2)
+        self.alpha = (255,)
+        self.thickness = self.planet.vista.coords.integers(1, self.planet.mass // 4 + 2)
         if med_diameter == None:
             self.med_diameter = self.planet.mass * 2
         else:
             self.med_diameter = med_diameter
         self.diameter = (
-            int(self.planet.vista.RNG.normal(self.med_diameter, self.planet.mass / 6))
+            int(
+                self.planet.vista.coords.normal(self.med_diameter, self.planet.mass / 6)
+            )
             + self.thickness
         )
         if local_height == None:
@@ -1117,6 +1177,10 @@ class Rings(PlanetaryFeature):
         self.planet.vista.status_dict[f"Planet {self.planet.layer}"]["rings"] += 1
 
     def ring_maker(self, im, center):
+        """
+        The method used to draw the rings according to the specifications on the static
+        image of the planet.
+        """
         x, y = center - self.center
         self.ring = Image.new("RGBA", im.size, (0, 0, 0, 0))
         self.draw_ring = ImageDraw.Draw(self.ring)
@@ -1138,10 +1202,17 @@ class Rings(PlanetaryFeature):
         )
 
     def background(self, center, im, draw_im):
+        """
+        Called first to draw the full ring behind the planet.
+        """
         self.ring_maker(im, center)
         im.alpha_composite(self.ring)
 
     def foreground(self, center, im, draw_im, planet_mask):
+        """
+        Called second to redraw the portion of the ring that should be in front
+        of the planet.
+        """
         x, y = center - self.center
         background = [0, 0, im.size[0], center[1]]
         self.draw_ring.rectangle(background, fill=(0, 0, 0, 0))
@@ -1151,6 +1222,11 @@ class Rings(PlanetaryFeature):
 
 
 class Interior(CelestialBody):
+    """
+    The base class for an interior. Can be used for any interior that has no animated
+    elements. Otherwise subclassed for an animate interior
+    """
+
     def __init__(self, vista, file_path, invert_colors=False):
         super().__init__(vista)
         self.bgr = RNG.permutation(range(3))
@@ -1161,9 +1237,19 @@ class Interior(CelestialBody):
         self.activate_camera(file_path)
 
     def activate_camera(self, file_path):
+        """
+        A catch-all method for the image processing and setup done to the interior's
+        image file(s) before drawing. In this base class it just recolors the image.
+        """
         self.im = self.recolor(Image.open(file_path))
 
     def recolor(self, im):
+        """
+        This method takes the interior's image and recolors it to match the palette
+        of the rest of the Vista.
+
+        Returns recolored PIL.image
+        """
         # Convert image to RGB mode so we can quantize the colors to the palette.
         *rgb, a = im.split()
         reorder = []
@@ -1184,20 +1270,36 @@ class Interior(CelestialBody):
         return im
 
     def draw(self, image, drawing_frame, frame_n):
+        """
+        Draws the interior image over everything else in the frame.
+        """
         image.alpha_composite(self.im)
 
 
 class AstroGarden(Interior):
+    """
+    Provides small animation capabilities for the series of astrogarden images that
+    include slowly blinking lights along the path.
+    """
+
     def __init__(self, vista, file_path="garden_stroll.png"):
         super().__init__(vista, file_path)
 
     def activate_camera(self, file_path):
+        """
+        The method for assembling the film_strip of interior images and ensuring each
+        image matches the Vista's palette.
+        """
         file_name, ext = file_path.split(".")
         self.film_strip = [
             self.recolor(Image.open(f"{file_name}{n}.{ext}")) for n in range(3)
         ]
 
     def draw(self, image, drawing_frame, frame_n):
+        """
+        Draws the interior image over everything else in the frame, advancing through
+        the film_strip at regular intervals.
+        """
         blink = frame_n % 96
         if blink < 24:
             im = self.film_strip[0]
@@ -1209,6 +1311,11 @@ class AstroGarden(Interior):
 
 
 class ExtraVehicularActivity(Interior):
+    """
+    The exterior interior, a view from inside a space helmet as our viewer floats
+    outside the craft.
+    """
+
     def __init__(self, vista, file_path="BubbleHelmet.png"):
         super().__init__(vista, file_path)
         self.fog = fog_like_alpha(self.vista.size, [100, 220, 300, 420])
@@ -1217,6 +1324,9 @@ class ExtraVehicularActivity(Interior):
         self.lines = self.readout()
 
     def readout(self):
+        """
+        Provides a vital message to be printed on the space helmet's readout.
+        """
         lines = [
             line.ljust(23) + "\n"
             for line in (
@@ -1230,11 +1340,16 @@ class ExtraVehicularActivity(Interior):
         return cycle(lines)
 
     def draw(self, image, drawing_frame, frame_n):
+        """
+        Draws the interior image over everything else in the frame, including animating
+        the fog from the astronaut's breath on the helmet glass and the helment's text
+        display.
+        """
         fog = ImageChops.multiply(
             Image.new(
                 "L",
                 image.size,
-                color=int(np.ceil(50 + 10 * np.cos(frame_n / 120 * np.pi))),
+                color=int(np.ceil(40 + 40 * np.cos(frame_n / 120 * np.pi))),
             ),
             self.fog,
         )
@@ -1242,7 +1357,7 @@ class ExtraVehicularActivity(Interior):
         breath.putalpha(fog)
         image.alpha_composite(breath)
         image.alpha_composite(self.im)
-        # Text between 168, 372 and 190,394
+        # Print text between screen coordinates (168, 372) and (190, 394)
         if (frame_n % 120) == 0:
             text = [next(self.lines) for dummy in range(4)]
             self.leading_lines = "".join(text[:3])
@@ -1258,38 +1373,61 @@ class ExtraVehicularActivity(Interior):
 
 
 class StellarCafe(Interior):
+    """
+    A view from inside a on ship cafe. Includes animation for steam rising from mugs.
+    """
+
     def __init__(self, vista, file_path="cafe.png"):
         super().__init__(vista, file_path)
-        self.last_steaming = None
         self.steam_box_left = [120, 280, 135, 314]
         self.steam_box_right = [225, 286, 240, 320]
         self.left_mug = (RNG.choice([True, False]), False)
         self.right_mug = (RNG.choice([True, False]), False)
+        self.steam = self.steam_cycle()
+        # self.first_steaming = self.generate_mug_steam()
+        # self.prev_steaming = self.last_steaming = self.generate_mug_steam()
+
+    def generate_mug_steam(self):
+        """
+        Creates a snapshot of steam that rising from the mugs.
+        """
+        steam_left = flame_like_alpha(self.im.size, self.steam_box_left, *self.left_mug)
+        steam_right = flame_like_alpha(
+            self.im.size, self.steam_box_right, *self.right_mug
+        )
+        steam = ImageChops.lighter(steam_left, steam_right)
+        steaming = Image.new("RGBA", self.vista.size, "white")
+        steaming.putalpha(steam)
+        return steaming
+
+    def steam_cycle(self):
+        first_steaming = next_steaming = self.generate_mug_steam()
+        for n in range(self.vista.length - 12):
+            if n % 12 == 0:
+                prev_steaming, next_steaming = next_steaming, self.generate_mug_steam()
+            yield Image.blend(prev_steaming, next_steaming, (n % 12 / 12))
+        for n in range(12):
+            yield Image.blend(next_steaming, first_steaming, n / 12)
 
     def draw(self, image, drawing_frame, frame_n):
-        if (self.last_steaming is None) or (frame_n % 5 == 0):
-            steam_left = flame_like_alpha(
-                self.im.size, self.steam_box_left, *self.left_mug
-            )
-            steam_right = flame_like_alpha(
-                self.im.size, self.steam_box_right, *self.right_mug
-            )
-            steam = ImageChops.lighter(steam_left, steam_right)
-            steaming = Image.new("RGBA", image.size, "white")
-            steaming.putalpha(steam)
-            self.last_steaming = self.im.copy()
-            self.last_steaming.alpha_composite(steaming)
-        image.alpha_composite(self.last_steaming)
+        """
+        Draws the interior image over everything else in the frame, including animating
+        the steam pouring off of two hot beverages.
+        """
+        current_im = self.im.copy()
+        current_im.alpha_composite(next(self.steam))
+        image.alpha_composite(current_im)
 
 
 class Engineering(Interior):
+    """
+    A view through a heptagonal portal in engineering. Includes animations for various
+    readouts and the occasional flickering lighting effect.
+    """
+
     def __init__(self, vista, file_path="engineering.png"):
         super().__init__(vista, file_path)
         self.osc_bg = self.vista.palette.get_color(hue=-1, shade=-2)
-        # if self.vista.palette.n_colors < 32:
-        #     self.osc_shine = self.vista.palette.get_color(hue=-1, shade=0)
-        # else:
-        #     self.osc_shine = self.vista.palette.get_color(hue=-1, shade=1)
         self.osc_shine = self.vista.palette.get_color(hue=-1, shade=1)
         self.osc_fg0 = self.vista.palette.get_color(hue=-2, shade=0)
         self.osc_fg1 = self.vista.palette.get_color(hue=2, shade=0)
@@ -1297,6 +1435,10 @@ class Engineering(Interior):
         self.diagnostics = RNG.choice(["sins", "soothes"], p=[0.75, 0.25])
 
     def activate_camera(self, file_path):
+        """
+        The method for assembling the film_strip of interior images and ensuring each
+        image matches the Vista's palette.
+        """
         file_name, ext = file_path.split(".")
         self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
         self.film_strip = [
@@ -1305,6 +1447,11 @@ class Engineering(Interior):
         ]
 
     def draw(self, image, drawing_frame, frame_n):
+        """
+        Draws the interior image over everything else in the frame, advancing through
+        the film_strip at regular intervals. Includes drawing an animated oscilloscope
+        on top of everything else.
+        """
         blink = frame_n % 96
         if blink < 24:
             op = RNG.choice([0, 1], p=[0.75, 0.25])
@@ -1345,11 +1492,13 @@ class Engineering(Interior):
 
 class Palette:
     """
+    A Palette object holds all the colors that should show up in the animation.
     Hue, brightest = 0, darkest = -1
     Shade, brightest = 0, darkest = -1
     """
 
-    def __init__(self, palette=None, hue_depth=6, shade_depth=5):
+    def __init__(self, coords, palette=None, hue_depth=6, shade_depth=5):
+        self.coords = coords
         self.hue_depth = hue_depth
         self.shade_depth = shade_depth
         if palette is None:
@@ -1367,7 +1516,7 @@ class Palette:
         to darkest (hue=hue_depth-1), and shades of the color as the columns,
         sorted from brightest (shade=0) to darkest (shade=shade_depth-1).
         """
-        palette = pd.Series(RNG.choice(COLOR_NAMES, hue_depth, replace=False)).apply(
+        palette = pd.Series(self.coords.choice(COLOR_NAMES, hue_depth, replace=False)).apply(
             ImageColor.getrgb
         )
         palette = self.sort_palette(palette)
@@ -1449,7 +1598,7 @@ class PastellerPalette(Palette):
 
 class SplitComplementaryPalette(Palette):
     def random_palette(self, hue_depth=6):
-        base_hue = self.vista.RNG.integers(0, 360)
+        base_hue = self.coords.integers(0, 360)
         support_right = (base_hue + 120) % 360
         support_left = (base_hue - 120) % 360
         palette = pd.Series(
@@ -1476,7 +1625,7 @@ class MonoPalette16(Palette):
     def random_palette(self, hue_depth=3):
         if self.hue is not None:
             return self.build_palette(self.hue)
-        base_hue = self.vista.RNG.integers(0, 360)
+        base_hue = self.vista.coords.integers(0, 360)
         return self.build_palette(base_hue)
 
     def build_palette(self, base_hue):
@@ -1513,7 +1662,7 @@ class ComplementaryPalette16(Palette):
         super().__init__(palette=None, hue_depth=3, shade_depth=4)
 
     def random_palette(self, hue_depth=3):
-        base_hue = self.vista.RNG.integers(0, 360)
+        base_hue = self.vista.coords.integers(0, 360)
         palette = pd.Series(
             [ImageColor.getrgb(f"hsl({base_hue}, {sat}%, 50%)") for sat in (20, 50)]
             + [
@@ -1677,28 +1826,16 @@ def fog_like_alpha(full_size, box, color=None):
 
 def random_spacescape(length=1200):
     coords = Coordinates()
+    shiploc = ShipLocation()
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
     spacescape = Vista(
         coords=coords,
-        palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+        shiploc=shiploc,
+        palette=coords.choice([Palette, PastellerPalette], p=(0.3, 0.7))(coords, p),
         length=length,
     )
-    StarField(spacescape, coords.integers(450, 551))
-    total_planets = abs(int(coords.normal(5, 1)))
-    for n in range(total_planets):
-        print(f"Surveying planet {n+1} of {total_planets}…")
-        RandomPlanet(spacescape)
-    RNG.choice(
-        [
-            partial(Interior, file_path="observation_windows.png"),
-            AstroGarden,
-            Engineering,
-            StellarCafe,
-            ExtraVehicularActivity,
-        ]
-    )(spacescape)
     print("Painting spacescape!")
-    spacescape.save()
+    spacescape.save_video()
     im = spacescape.palette.get_image()
     im.save("palette.png")
     im.close()
@@ -1709,7 +1846,7 @@ def random_spacescape(length=1200):
     computer_readout = {
         "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
         "star density": f"Star density = {spacescape.bodies[0].n_stars/(spacescape.bodies[0].fieldsize)}",
-        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+        "planetoids": f"{s_noun} {s_verb} {spacescape.total_planets} planetoids.",
     }
     if isinstance(spacescape.bodies[-1], ExtraVehicularActivity):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
@@ -1853,13 +1990,29 @@ class GuidanceSystems(Interior):
                     )
 
 
+class TestVista(Vista):
+    def generate_view(self):
+        """
+        This method is called to create all the bodies needing testing.
+        """
+        self.star_field = StarField(self, self.coords.integers(450, 551))
+        self.total_planets = 1
+        self.layers = max(self.layers, self.total_planets + 1)
+        self.planets = []
+        self.planets.append(TestPlanet(self))
+        self.interior = GuidanceSystems(self)
+
+
 class TestPlanet(BasePlanet):
     def __init__(self, vista):
         super().__init__(vista)
         self.velocity = 0
-        self.x = 160
-        self.y = 160
-        self.tilt_from_x = 45
+        self.colorful = True
+        self.x = 100
+        self.y = 100
+        self.tilt_from_y = 5
+        self.bearing = 0
+        self.spin = -1
         self.mass = 80
         self.sys_height = self.sys_width = self.height = self.width = self.mass
         self.features = self.generate_features()
@@ -1870,10 +2023,17 @@ class TestPlanet(BasePlanet):
         features = [Clouds(self)]
         # features = [Craters(self)]
         features.append(Rings(self))
-        for i in range(self.vista.RNG.integers(3)):
+        for i in range(self.vista.coords.integers(3)):
             features.append(
                 Rings(self, features[i + 1].diameter, features[i + 1].ring_height)
             )
-        for moon in range(12):
-            features.append(Satellite(self))
+        features.append(SatelliteCluster(self))
         return features
+
+
+def run_test():
+    coords = Coordinates()
+    shiploc = ShipLocation()
+    tv = TestVista(coords, shiploc)
+    tv.save_video()
+    print(tv.planets[0].spin)
