@@ -1890,7 +1890,7 @@ def spacescape(coords=None, shiploc=None, length=1200):
     computer_readout = {
         "coords": f"{RNG.choice(COORD_GERUNDS)} coordinates {coords}…",
         "star density": f"Star density = {painting.bodies[0].n_stars/(painting.bodies[0].fieldsize)}",
-        "planetoids": f"{s_noun} {s_verb} {total_planets} planetoids.",
+        "planetoids": f"{s_noun} {s_verb} {painting.total_planets} planetoids.",
     }
     if isinstance(painting.bodies[-1], ExtraVehicularActivity):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)

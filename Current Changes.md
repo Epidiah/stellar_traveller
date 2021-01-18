@@ -1,3 +1,7 @@
+# 2021-01-18 a couple moments or two after that
+Commit Message: "Tidying up another bug"
+* Just doing my job.
+
 # 2021-01-18 moments later
 Commit Message: "Brought spacescape function up to date."
 * Had random_spacescape working, but needed to update spacescape
