@@ -165,19 +165,18 @@ class VidTweet(object):
         print(req.json())
 
 
-if __name__ == "__main__":
+def main():
     attempt = 0
     limit = file_size = 15728640
     length = 1200
     coords = str(sv.Coordinates())
-    room = None
     while file_size >= limit and attempt < 4:
-        print(f'Attempt {attempt+1}…')
-        painting, room, status_dict = sv.spacescape(coords=coords, length=length, room=room)
+        print(f"Attempt {attempt+1}…")
+        painting, status_dict = sv.spacescape(coords=coords, length=length)
         print("Painting spacescape!")
         painting.save_video(VIDEO_FILENAME)
         file_size = os.stat(VIDEO_FILENAME).st_size
-        print(f'File size: {file_size}')
+        print(f"File size: {file_size}")
         attempt += 1
         length -= 100
     spacescape = VidTweet(VIDEO_FILENAME)
@@ -187,3 +186,7 @@ if __name__ == "__main__":
     spacescape.set_metadata()
     status = "\n".join([v for v in status_dict.values()])
     spacescape.tweet(status)
+
+
+if __name__ == "__main__":
+    main()

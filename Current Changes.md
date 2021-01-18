@@ -1,3 +1,7 @@
+# 2021-01-18 moments later
+Commit Message: "Brought spacescape function up to date."
+* Had random_spacescape working, but needed to update spacescape
+
 # 2021-01-18
 Commit Message: "Switched from GIFs to MP4s."
 * Continuing to add comments and documentation to space_vista.py up to line 1516 now.

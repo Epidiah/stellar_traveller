@@ -214,11 +214,11 @@ class Vista:
         """
         self.star_field = StarField(self, self.coords.integers(450, 551))
         self.planets = []
-        for dummy in range(abs(int(self.coords.normal(3,2)))+1):
+        for dummy in range(abs(int(self.coords.normal(3, 2))) + 1):
             self.planets.append(RandomPlanet(self, 20))
-        for dummy in range(abs(int(self.coords.normal(2,1)))):
+        for dummy in range(abs(int(self.coords.normal(2, 1)))):
             self.planets.append(RandomPlanet(self, 12))
-        for dummy in range(abs(int(self.coords.normal(1,1)))):
+        for dummy in range(abs(int(self.coords.normal(1, 1)))):
             self.planets.append(RandomPlanet(self, 4))
         self.total_planets = len(self.planets)
         # for n in range(self.total_planets):
@@ -816,8 +816,14 @@ class Satellite(PlanetaryFeature):
         self.orbit_radius = self.planet.mass * 2 / self.orbit_velocity
         self.orbit_matrix = np.array(
             [
-                [np.cos(np.radians(self.planet.tilt_from_x)), -1 * np.sin(np.radians(self.planet.tilt_from_x))],
-                [np.sin(np.radians(self.planet.tilt_from_x)), np.cos(np.radians(self.planet.tilt_from_x))],
+                [
+                    np.cos(np.radians(self.planet.tilt_from_x)),
+                    -1 * np.sin(np.radians(self.planet.tilt_from_x)),
+                ],
+                [
+                    np.sin(np.radians(self.planet.tilt_from_x)),
+                    np.cos(np.radians(self.planet.tilt_from_x)),
+                ],
             ]
         )
         self.start_location = self.cluster.get_start_location(self)
@@ -936,7 +942,12 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if self.planet.spin * np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) <= 0:
+        if (
+            self.planet.spin
+            * np.sin(np.radians(self.planet.tilt_from_y))
+            * np.sin(phase)
+            <= 0
+        ):
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
@@ -951,7 +962,12 @@ class Satellite(PlanetaryFeature):
             * 2
             * np.pi
         )
-        if self.planet.spin * np.sin(np.radians(self.planet.tilt_from_y)) * np.sin(phase) > 0:
+        if (
+            self.planet.spin
+            * np.sin(np.radians(self.planet.tilt_from_y))
+            * np.sin(phase)
+            > 0
+        ):
             x, y = self.oribit_shift(x, y, image, frame_n, phase)
             image.paste(self.im, (int(x), int(y)), mask=self.im)
 
@@ -1516,9 +1532,9 @@ class Palette:
         to darkest (hue=hue_depth-1), and shades of the color as the columns,
         sorted from brightest (shade=0) to darkest (shade=shade_depth-1).
         """
-        palette = pd.Series(self.coords.choice(COLOR_NAMES, hue_depth, replace=False)).apply(
-            ImageColor.getrgb
-        )
+        palette = pd.Series(
+            self.coords.choice(COLOR_NAMES, hue_depth, replace=False)
+        ).apply(ImageColor.getrgb)
         palette = self.sort_palette(palette)
         palette = palette.to_frame(name=0)
         return self.fill_shades(palette)
@@ -1853,33 +1869,20 @@ def random_spacescape(length=1200):
     return computer_readout
 
 
-def spacescape(coords=None, length=1200, room=None):
+def spacescape(coords=None, shiploc=None, length=1200):
     if coords is None:
         coords = Coordinates()
     elif type(coords) == str:
         coords = Coordinates(coords)
+    if shiploc is None:
+        shiploc = ShipLocation()
     p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
     painting = Vista(
         coords=coords,
-        palette=coords.choice([Palette, PastellerPalette], p=(0.5, 0.5))(p),
+        shiploc=shiploc,
+        palette=coords.choice([Palette, PastellerPalette], p=(0.3, 0.7))(coords, p),
         length=length,
     )
-    StarField(painting, coords.integers(450, 551))
-    total_planets = abs(int(coords.normal(5, 1)))
-    for n in range(total_planets):
-        print(f"Surveying planet {n+1} of {total_planets}…")
-        RandomPlanet(painting)
-    if room is None:
-        room = RNG.choice(
-            [
-                partial(Interior, file_path="observation_windows.png"),
-                AstroGarden,
-                Engineering,
-                StellarCafe,
-                ExtraVehicularActivity,
-            ]
-        )
-    room(painting)
     s_noun = RNG.choice(DETECTOR)
     s_verb = RNG.choice(DETECTION)
     if s_noun[-1] != "s":
@@ -1891,7 +1894,7 @@ def spacescape(coords=None, length=1200, room=None):
     }
     if isinstance(painting.bodies[-1], ExtraVehicularActivity):
         computer_readout["task"] = RNG.choice(EVA_GERUNDS) + RNG.choice(EVAS)
-    return painting, room, computer_readout
+    return painting, computer_readout
 
 
 ## Exploratory Functions
