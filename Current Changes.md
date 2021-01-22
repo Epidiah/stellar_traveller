@@ -1,11 +1,12 @@
-# 2021-01-20
-Commit Message: "Adding sountrack"
+# 2021-01-21
+Commit Message: "Moved to a 720 by 720 format."
 * Added audio and visual folders to house the respective files
 * Renamed audio_test.py to space_track.py. Might have to move it into space_vista.py or get them to talk to each other.
-* Each interior will now have its own Affinity Designer file. The will also be resized to fit one of three formats: 720x720 square, 720x1280 portrait, or 1280x720 landscape.
+* Each interior will now have its own Affinity Designer file. They were also resized to fit the new 720x720 square format
+* TO DO: Prepare for 720x1280 portrait and 1280x720 landscape formats.
 * Adjusted the various animations in StellarCafe, Engineering, and ExtraVehicularActivity to reflect the new size.
 * Changed the shape and definition in flame_like_alpha for the better resolution.
-*
+* Experimenting with audio. Nothing live yet.
 
 # 2021-01-18 a couple moments or two after that
 Commit Message: "Tidying up another bug"
