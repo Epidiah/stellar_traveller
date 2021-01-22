@@ -11,6 +11,7 @@ import subprocess
 from collections import Counter
 from functools import partial, reduce
 from itertools import cycle
+from pathlib import Path
 from PIL import (
     Image,
     ImageChops,
@@ -22,6 +23,8 @@ from PIL import (
 from tqdm import tqdm
 
 # Constants
+
+IMAGE_PATH = Path("visual")
 
 # COLOR_NAMES are not currently in use, but may return in the future.
 COLOR_NAMES = pd.read_csv("colors.csv", squeeze=True, names=["color"])
@@ -164,11 +167,10 @@ class Vista:
         coords,
         shiploc,
         velocity=None,
-        field_width=400,
-        field_height=None,
+        field_width=720,
+        field_height=720,
         palette=None,
         bearing=None,
-        layers=9,
         length=1200,
         fps=24,
     ):
@@ -200,7 +202,6 @@ class Vista:
                 [np.sin(self.bearing), np.cos(self.bearing)],
             ]
         )
-        self.layers = layers
         self.bodies = []
         self.length = length
         self.fps = fps
@@ -214,19 +215,18 @@ class Vista:
         """
         self.star_field = StarField(self, self.coords.integers(450, 551))
         self.planets = []
-        for dummy in range(abs(int(self.coords.normal(3, 2))) + 1):
+        for trash in range(abs(int(self.coords.normal(3, 2))) + 1):
             self.planets.append(RandomPlanet(self, 20))
-        for dummy in range(abs(int(self.coords.normal(2, 1)))):
+        for trash in range(abs(int(self.coords.normal(2, 1)))):
             self.planets.append(RandomPlanet(self, 12))
-        for dummy in range(abs(int(self.coords.normal(1, 1)))):
+        for trash in range(abs(int(self.coords.normal(1, 1)))):
             self.planets.append(RandomPlanet(self, 4))
         self.total_planets = len(self.planets)
-        # for n in range(self.total_planets):
-        #     print(f"Surveying planet {n+1} of {self.total_planets}…")
-        #     self.planets.append(RandomPlanet(self))
         self.interior = self.shiploc.choice(
             [
-                partial(Interior, file_path="observation_windows.png"),
+                partial(
+                    Interior, file_path=Path(IMAGE_PATH, "observation_windows.png")
+                ),
                 AstroGarden,
                 Engineering,
                 StellarCafe,
@@ -252,7 +252,7 @@ class Vista:
         """
         voids = (
             Image.new("RGBA", (self.width, self.height), color="Black")
-            for dummy in range(self.length)
+            for trash in range(self.length)
         )
         drawing_frames = tqdm(
             ((im, ImageDraw.Draw(im, mode="RGBA")) for im in voids),
@@ -1120,7 +1120,7 @@ class Craters(PlanetaryFeature):
             )
             ripples = [
                 self.planet.vista.coords.integers(0, 360, 2)
-                for dummy in range(self.planet.vista.coords.integers(3))
+                for trash in range(self.planet.vista.coords.integers(3))
             ]
             decay = 0
             while width > decay:
@@ -1298,7 +1298,7 @@ class AstroGarden(Interior):
     include slowly blinking lights along the path.
     """
 
-    def __init__(self, vista, file_path="garden_stroll.png"):
+    def __init__(self, vista, file_path="astrogarden.png"):
         super().__init__(vista, file_path)
 
     def activate_camera(self, file_path):
@@ -1308,7 +1308,8 @@ class AstroGarden(Interior):
         """
         file_name, ext = file_path.split(".")
         self.film_strip = [
-            self.recolor(Image.open(f"{file_name}{n}.{ext}")) for n in range(3)
+            self.recolor(Image.open(Path(IMAGE_PATH, f"{file_name}{n}.{ext}")))
+            for n in range(3)
         ]
 
     def draw(self, image, drawing_frame, frame_n):
@@ -1332,12 +1333,13 @@ class ExtraVehicularActivity(Interior):
     outside the craft.
     """
 
-    def __init__(self, vista, file_path="BubbleHelmet.png"):
+    def __init__(self, vista, file_path=Path(IMAGE_PATH, "bubble_helmet.png")):
         super().__init__(vista, file_path)
-        self.fog = fog_like_alpha(self.vista.size, [100, 220, 300, 420])
+        self.fog = fog_like_alpha(self.vista.size, [180, 396, 540, 756])
         self.font_color = vista.palette.get_color(1, 0)
-        self.font = ImageFont.truetype(".fonts/HP-15C_Simulator_Font.ttf", 2)
+        self.font = ImageFont.truetype(".fonts/HP-15C_Simulator_Font.ttf", 4)
         self.lines = self.readout()
+        self.on_screen_text = [next(self.lines) for trash in range(4)]
 
     def readout(self):
         """
@@ -1365,7 +1367,7 @@ class ExtraVehicularActivity(Interior):
             Image.new(
                 "L",
                 image.size,
-                color=int(np.ceil(40 + 40 * np.cos(frame_n / 120 * np.pi))),
+                color=int(np.ceil(70 + 60 * np.cos(frame_n / 120 * np.pi))),
             ),
             self.fog,
         )
@@ -1375,11 +1377,11 @@ class ExtraVehicularActivity(Interior):
         image.alpha_composite(self.im)
         # Print text between screen coordinates (168, 372) and (190, 394)
         if (frame_n % 120) == 0:
-            text = [next(self.lines) for dummy in range(4)]
-            self.leading_lines = "".join(text[:3])
-            self.last_line = text[3]
+            self.on_screen_text = self.on_screen_text[1:] + [next(self.lines)]
+            self.leading_lines = "".join(self.on_screen_text[:3])
+            self.last_line = self.on_screen_text[3]
         drawing_frame.multiline_text(
-            (168, 372),
+            (302, 675),
             text=self.leading_lines + self.last_line[: (frame_n % 120) // 5],
             fill=self.font_color,
             font=self.font,
@@ -1393,15 +1395,13 @@ class StellarCafe(Interior):
     A view from inside a on ship cafe. Includes animation for steam rising from mugs.
     """
 
-    def __init__(self, vista, file_path="cafe.png"):
+    def __init__(self, vista, file_path=Path(IMAGE_PATH, "stellar_cafe.png")):
         super().__init__(vista, file_path)
-        self.steam_box_left = [120, 280, 135, 314]
-        self.steam_box_right = [225, 286, 240, 320]
-        self.left_mug = (RNG.choice([True, False]), False)
-        self.right_mug = (RNG.choice([True, False]), False)
+        self.steam_box_left = [236, 520, 262, 580]
+        self.steam_box_right = [423, 533, 450, 594]
+        self.left_mug = RNG.choice([True, False], 2)
+        self.right_mug = RNG.choice([True, False], 2)
         self.steam = self.steam_cycle()
-        # self.first_steaming = self.generate_mug_steam()
-        # self.prev_steaming = self.last_steaming = self.generate_mug_steam()
 
     def generate_mug_steam(self):
         """
@@ -1458,7 +1458,9 @@ class Engineering(Interior):
         file_name, ext = file_path.split(".")
         self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
         self.film_strip = [
-            self.recolor(Image.open(f"{self.flicker}{file_name}{n}.{ext}"))
+            self.recolor(
+                Image.open(Path(IMAGE_PATH, f"{self.flicker}{file_name}{n}.{ext}"))
+            )
             for n in range(4)
         ]
 
@@ -1479,29 +1481,38 @@ class Engineering(Interior):
             op = RNG.choice([1, 2], p=[0.75, 0.25])
             im = self.film_strip[op]
         # Oscilloscope
-        osc = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+        osc = Image.new("RGBA", (180, 180), (0, 0, 0, 0))
         dr_osc = ImageDraw.Draw(osc)
         dr_osc.ellipse(
-            [0, 0, 100, 100], fill=self.osc_bg, outline=self.osc_fg0, width=3
+            [0, 0, 180, 180], fill=self.osc_bg, outline=self.osc_fg0, width=4
         )
-        dr_osc.ellipse([60, 10, 80, 30], fill=self.osc_shine)
-        dr_osc.line([50, 0, 50, 100], fill=self.osc_lines)
-        dr_osc.line([0, 50, 100, 50], fill=self.osc_lines)
+        dr_osc.ellipse([108, 18, 144, 54], fill=self.osc_shine)
+        dr_osc.line([90, 0, 90, 180], fill=self.osc_lines)
+        dr_osc.line([0, 90, 180, 90], fill=self.osc_lines)
         mask = osc.copy()
-        xs = np.arange(101)
+        # xs = np.arange(180)
+        xs = np.linspace(0, 180, num=360, endpoint=False)
         if self.diagnostics == "sins":
-            y0s = np.sin((xs - 50 + frame_n) * np.pi / 60) * 15 + 50
-            y1s = np.sin((xs - 50) * (frame_n / 120 % 60)) * 20 + 50
+            y0s = np.sin((xs - 90 + frame_n) * np.pi / 60) * 27 + 90
+            y1s = np.sin((xs - 90) * frame_n / 600 * np.pi) * 36 + 90
             dr_osc.line(
-                [(x, y) for x, y in zip(xs, y0s)], fill=self.osc_fg0, joint="curve"
+                [(x, y) for x, y in zip(xs, y0s)],
+                fill=self.osc_fg0,
+                width=2,
+                joint="curve",
             )
-            dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
+            lxs, ly1s = xs.tolist(), y1s.tolist()
+            dr_osc.point([(x, y) for x, y in zip(lxs, ly1s)], fill=self.osc_fg1)
+            dr_osc.point(
+                [(x, y) for x, y in zip(lxs[1:] + [lxs[0]], ly1s[1:] + [ly1s[0]])],
+                fill=self.osc_fg1,
+            )
         elif self.diagnostics == "soothes":
-            y0s = np.sin(xs - 50 + (frame_n / 40 % 60)) * 15 + 50
-            y1s = np.sin((xs - 50) + (frame_n / 20 % 60)) * 20 + 50
+            y0s = np.sin(xs - 90 + (frame_n / 40 % 60)) * 27 + 90
+            y1s = np.sin((xs - 90) + (frame_n / 20 % 60)) * 36 + 90
             dr_osc.point([(x, y) for x, y in zip(xs, y0s)], fill=self.osc_fg0)
             dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
-        im.paste(osc, box=(290, 10), mask=mask)
+        im.paste(osc, box=(522, 18), mask=mask)
 
         image.alpha_composite(im)
 
@@ -1527,7 +1538,6 @@ class Palette:
 
     def random_palette(self, hue_depth=6):
         """
-
         Returns a pd.DataFrame with colors as the rows, sorted from brightest (hue=0)
         to darkest (hue=hue_depth-1), and shades of the color as the columns,
         sorted from brightest (shade=0) to darkest (shade=shade_depth-1).
@@ -1540,6 +1550,10 @@ class Palette:
         return self.fill_shades(palette)
 
     def sort_palette(self, palette):
+        """
+        Sorts the palette hues by some arbitrary definition of brightness.
+        """
+
         def color_sort_key(colors):
             lums = (0.2126, 0.7152, 0.0722)
             return colors.apply(lambda x: sum(c * l for c, l in zip(x, lums)))
@@ -1565,6 +1579,12 @@ class Palette:
         return palette
 
     def get_color(self, hue=None, shade=None):
+        """
+        If an int is provided for hue, returns a list of shades in that hue.
+        If an int is provided for shade, returns a list of hues at that shade level.
+        If ints are provided for both, returns the color at the intersect of that
+        hue and shade.
+        """
         if hue is not None and shade is not None:
             return self.palette.iloc[hue, shade]
         elif hue is not None:
@@ -1575,6 +1595,10 @@ class Palette:
             raise ValueError("Must have `hue` or `shade` or both, but not neither.")
 
     def get_image(self):
+        """
+        Returns an image with all the hues and shades of the palette, useful for
+        recoloring outside art.
+        """
         h, s = self.palette.shape
         plt_im = Image.new("RGBA", (200 * (h + 1), 200 * s), color="black")
         plt_drw = ImageDraw.Draw(plt_im)
@@ -1593,6 +1617,8 @@ class PastellerPalette(Palette):
         """
         Takes a pd.Series of colors in RGB tuple and returns a pd.DataFrame of
         the full palette of colors with the columns representing the shades.
+
+        Generally presents a brighter more diffuse set of colors than the base palette.
         """
         palette.loc[:, 1] = palette.loc[:, 0]
 
@@ -1802,12 +1828,17 @@ def flame_like_alpha(full_size, box, left_curl=False, whisp=False):
     # Now let's shape that noise so it vaguely fits the silhouette of fire
     drw_haze = ImageDraw.Draw(haze)
     drw_haze.ellipse(
-        [x * left_curl - x // 2, 0, x * left_curl + x // 2, y // 2],
+        [x * left_curl - x // 2, -y / 8, x * left_curl + x // 2, y * 5 / 8],
         "black",
     )
     if whisp:
         drw_haze.ellipse(
-            [x * (not left_curl) - x // 2, 0, x * (not left_curl) + x // 2, y // 2],
+            [
+                x * (not left_curl) - x // 2,
+                y * 3 / 8,
+                x * (not left_curl) + x // 2,
+                y * 9 / 8,
+            ],
             "black",
         )
     shifts = RNG.integers(-4, 5, 4)
@@ -1817,7 +1848,7 @@ def flame_like_alpha(full_size, box, left_curl=False, whisp=False):
     flames = Image.new("L", full_size, color="black")
     flames.paste(haze, box=box, mask=mask)
     # Now spread it around and blur it!
-    flames = flames.effect_spread(2).filter(ImageFilter.GaussianBlur(3))
+    flames = flames.effect_spread(3).filter(ImageFilter.GaussianBlur(3))
     return flames
 
 
@@ -1843,7 +1874,7 @@ def fog_like_alpha(full_size, box, color=None):
 def random_spacescape(length=1200):
     coords = Coordinates()
     shiploc = ShipLocation()
-    p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
+    p = pd.Series([tuple(coords.integers(0, 256, 3)) for trash in range(6)])
     spacescape = Vista(
         coords=coords,
         shiploc=shiploc,
@@ -1876,7 +1907,7 @@ def spacescape(coords=None, shiploc=None, length=1200):
         coords = Coordinates(coords)
     if shiploc is None:
         shiploc = ShipLocation()
-    p = pd.Series([tuple(coords.integers(0, 256, 3)) for dummy in range(6)])
+    p = pd.Series([tuple(coords.integers(0, 256, 3)) for trash in range(6)])
     painting = Vista(
         coords=coords,
         shiploc=shiploc,
