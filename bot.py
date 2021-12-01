@@ -22,7 +22,6 @@ ACCESS_TOKEN_SECRET = os.getenv("VS_A_TOKEN_SECRET")
 
 VIDEO_FILENAME = "starry.mp4"
 
-
 oauth = OAuth1(
     CONSUMER_KEY,
     client_secret=CONSUMER_SECRET,
@@ -54,7 +53,9 @@ class VidTweet(object):
             "media_category": "tweet_video",
         }
 
-        req = requests.post(url=MEDIA_ENDPOINT_URL, data=request_data, auth=oauth)
+        req = requests.post(url=MEDIA_ENDPOINT_URL,
+                            data=request_data,
+                            auth=oauth)
         media_id = req.json()["media_id"]
 
         self.media_id = media_id
@@ -82,9 +83,10 @@ class VidTweet(object):
 
             files = {"media": chunk}
 
-            req = requests.post(
-                url=MEDIA_ENDPOINT_URL, data=request_data, files=files, auth=oauth
-            )
+            req = requests.post(url=MEDIA_ENDPOINT_URL,
+                                data=request_data,
+                                files=files,
+                                auth=oauth)
 
             if req.status_code < 200 or req.status_code > 299:
                 print(req.status_code)
@@ -94,7 +96,8 @@ class VidTweet(object):
             segment_id = segment_id + 1
             bytes_sent = file.tell()
 
-            print("%s of %s bytes uploaded" % (str(bytes_sent), str(self.total_bytes)))
+            print("%s of %s bytes uploaded" %
+                  (str(bytes_sent), str(self.total_bytes)))
 
         print("Upload chunks complete.")
 
@@ -106,7 +109,9 @@ class VidTweet(object):
 
         request_data = {"command": "FINALIZE", "media_id": self.media_id}
 
-        req = requests.post(url=MEDIA_ENDPOINT_URL, data=request_data, auth=oauth)
+        req = requests.post(url=MEDIA_ENDPOINT_URL,
+                            data=request_data,
+                            auth=oauth)
         print(req.json())
 
         self.processing_info = req.json().get("processing_info", None)
@@ -128,7 +133,9 @@ class VidTweet(object):
 
         if state == "failed":
             err = state["error"]
-            print(f"Error Code: {err['code']}\nError: {err['name']} - {err['message']}")
+            print(
+                f"Error Code: {err['code']}\nError: {err['name']} - {err['message']}"
+            )
             sys.exit(0)
 
         check_after_secs = self.processing_info["check_after_secs"]
@@ -140,17 +147,23 @@ class VidTweet(object):
 
         request_params = {"command": "STATUS", "media_id": self.media_id}
 
-        req = requests.get(url=MEDIA_ENDPOINT_URL, params=request_params, auth=oauth)
+        req = requests.get(url=MEDIA_ENDPOINT_URL,
+                           params=request_params,
+                           auth=oauth)
 
         self.processing_info = req.json().get("processing_info", None)
         self.check_status()
 
     def set_metadata(self):
         request_data = {
-            "media_id": self.media_id,
-            "alt_text": "Veiw of space from observation windows aboard a starship as some planets gently roll by.",
+            "media_id":
+            self.media_id,
+            "alt_text":
+            "Veiw of space from observation windows aboard a starship as some planets gently roll by.",
         }
-        req = requests.post(url=METADATA_ENDPOINT_URL, data=request_data, auth=oauth)
+        req = requests.post(url=METADATA_ENDPOINT_URL,
+                            data=request_data,
+                            auth=oauth)
 
     def tweet(self, status):
         """
