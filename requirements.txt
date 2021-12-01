@@ -10,3 +10,4 @@ pydub==0.24.1
 requests==2.24.0
 requests-oauthlib==1.3.0
 tqdm==4.50.0
+yapf==0.31.0
