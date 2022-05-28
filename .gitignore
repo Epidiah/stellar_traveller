@@ -3,3 +3,5 @@
 ReadAndWriter.md
 *.sublime-project
 *.sublime-workspace
+__pycache__*
+*.mp4
