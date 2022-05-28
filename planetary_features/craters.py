@@ -16,6 +16,14 @@ class Craters(PlanetaryFeature):
                 "craters"
             ] = self.n_craters
 
+    @staticmethod
+    def top_left_boundaries(center, mass):
+      return (center - mass) // 2
+
+    @staticmethod
+    def bottom_right_boundaries(center, mass):
+      return (center + mass) // 2
+
     def foreground(self, center, im, draw_im, planet_mask):
         """
         Called once to draw roughly self.n_ccraters number of craters across
@@ -23,8 +31,8 @@ class Craters(PlanetaryFeature):
         """
         surface = im.copy()
         scar_surface = ImageDraw.Draw(surface)
-        left_x, top_y = center - self.planet.mass // 2
-        right_x, bottom_y = center + self.planet.mass // 2
+        left_x, top_y = self.top_left_boundaries(center, self.planet.mass)
+        right_x, bottom_y = self.bottom_right_boundaries(center, self.planet.mass)
         for crater in range(self.n_craters):
             diameter = int(
                 self.planet.vista.coords.normal(
