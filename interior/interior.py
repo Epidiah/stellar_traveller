@@ -1,9 +1,10 @@
-from .celestial_body import CelestialBody
+from celestial_bodies.celestial_body import CelestialBody
 from PIL import (
     Image,
     ImageChops,
 )
 import numpy as np
+
 
 class Interior(CelestialBody):
     """
@@ -11,7 +12,7 @@ class Interior(CelestialBody):
     elements. Otherwise subclassed for an animate interior
     """
 
-    def __init__(self, vista, file_path, invert_colors=False):
+    def __init__(self, vista, file_path, image_name = "observation_windows.png", invert_colors=False):
         super().__init__(vista)
         RNG = np.random.default_rng()
         self.bgr = RNG.permutation(range(3))
@@ -19,14 +20,19 @@ class Interior(CelestialBody):
             self.invert_color = RNG.integers(2, size=3)
         else:
             self.invert_color = (0, 0, 0)
-        self.activate_camera(file_path)
+        self.file_path = file_path
+        self.image_name = image_name
+        self.activate_camera()
 
-    def activate_camera(self, file_path):
+    def image_path(self):
+        return self.file_path / self.image_name
+
+    def activate_camera(self):
         """
         A catch-all method for the image processing and setup done to the interior's
         image file(s) before drawing. In this base class it just recolors the image.
         """
-        self.im = self.recolor(Image.open(file_path))
+        self.im = self.recolor(Image.open(self.image_path()))
 
     def recolor(self, im):
         """

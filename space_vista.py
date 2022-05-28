@@ -8,17 +8,20 @@ import numpy as np
 import pandas as pd
 import subprocess
 
-from functools import partial, reduce
+from functools import reduce
 from itertools import cycle
 from pathlib import Path
 from PIL import (
     Image,
     ImageChops,
     ImageDraw,
-    ImageFilter,
     ImageFont,
 )
 from tqdm import tqdm
+from interior.astro_garden import AstroGarden
+from interior.engineering import Engineering
+from interior.extra_vehicular_activity import ExtraVehicularActivity
+from interior.stellar_cafe import StellarCafe
 from planetary_features.clouds import Clouds
 from planetary_features.continents import Continents
 from planetary_features.craters import Craters
@@ -31,11 +34,11 @@ from palette.pasteller_palette import PastellerPalette
 # from palette.complementary_palette_16 import ComplementaryPalette16
 # from palette.mono_palette_16 import MonoPalette16
 from celestial_bodies.base_planet import BasePlanet
-from celestial_bodies.interior import Interior
 from celestial_bodies.star_field import StarField
+from interior.interior import Interior
 
 # Constants
-IMAGE_PATH = Path("visual")
+BASE_DIR = Path(".")
 
 # For when I just need a random number generator not tied to coordinates or
 # location on the ship. Or when I need to jump start another RNG
@@ -229,15 +232,13 @@ class Vista:
         self.total_planets = len(self.planets)
         self.interior = self.shiploc.choice(
             [
-                partial(
-                    Interior, file_path=Path(IMAGE_PATH, "observation_windows.png")
-                ),
+                Interior,
                 AstroGarden,
                 Engineering,
                 StellarCafe,
                 ExtraVehicularActivity,
             ]
-        )(self)
+        )(self, file_path=BASE_DIR / "assets/visual")
 
     def add_celestial_body(self, body):
         """
@@ -355,284 +356,6 @@ class RandomPlanet(BasePlanet):
         return features
 
 
-
-class AstroGarden(Interior):
-    """
-    Provides small animation capabilities for the series of astrogarden images that
-    include slowly blinking lights along the path.
-    """
-
-    def __init__(self, vista, file_path="astrogarden.png"):
-        super().__init__(vista, file_path)
-
-    def activate_camera(self, file_path):
-        """
-        The method for assembling the film_strip of interior images and ensuring each
-        image matches the Vista's palette.
-        """
-        file_name, ext = file_path.split(".")
-        self.film_strip = [
-            self.recolor(Image.open(Path(IMAGE_PATH, f"{file_name}{n}.{ext}")))
-            for n in range(3)
-        ]
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the interior image over everything else in the frame, advancing through
-        the film_strip at regular intervals.
-        """
-        blink = frame_n % 96
-        if blink < 24:
-            im = self.film_strip[0]
-        elif 48 <= blink < 72:
-            im = self.film_strip[2]
-        else:
-            im = self.film_strip[1]
-        image.alpha_composite(im)
-
-
-class ExtraVehicularActivity(Interior):
-    """
-    The exterior interior, a view from inside a space helmet as our viewer floats
-    outside the craft.
-    """
-
-    def __init__(self, vista, file_path=Path(IMAGE_PATH, "bubble_helmet.png")):
-        super().__init__(vista, file_path)
-        self.fog = fog_like_alpha(self.vista.size, [180, 396, 540, 756])
-        self.font_color = vista.palette.get_color(1, 0)
-        self.font = ImageFont.truetype(".fonts/HP-15C_Simulator_Font.ttf", 4)
-        self.lines = self.readout()
-        self.on_screen_text = [next(self.lines) for trash in range(4)]
-
-    def readout(self):
-        """
-        Provides a vital message to be printed on the space helmet's readout.
-        """
-        lines = [
-            line.ljust(23) + "\n"
-            for line in (
-                "Swords Without Master",
-                "is in",
-                "Worlds Without Master,",
-                "issue 3",
-                " --Epidiah Ravachol",
-            )
-        ]
-        return cycle(lines)
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the interior image over everything else in the frame, including animating
-        the fog from the astronaut's breath on the helmet glass and the helment's text
-        display.
-        """
-        fog = ImageChops.multiply(
-            Image.new(
-                "L",
-                image.size,
-                color=int(np.ceil(70 + 60 * np.cos(frame_n / 120 * np.pi))),
-            ),
-            self.fog,
-        )
-        breath = Image.new("RGBA", image.size, "white")
-        breath.putalpha(fog)
-        image.alpha_composite(breath)
-        image.alpha_composite(self.im)
-        # Print text between screen coordinates (168, 372) and (190, 394)
-        if (frame_n % 120) == 0:
-            self.on_screen_text = self.on_screen_text[1:] + [next(self.lines)]
-            self.leading_lines = "".join(self.on_screen_text[:3])
-            self.last_line = self.on_screen_text[3]
-        drawing_frame.multiline_text(
-            (302, 675),
-            text=self.leading_lines + self.last_line[: (frame_n % 120) // 5],
-            fill=self.font_color,
-            font=self.font,
-            spacing=2,
-            align="left",
-        )
-
-
-class StellarCafe(Interior):
-    """
-    A view from inside a on ship cafe. Includes animation for steam rising from mugs.
-    """
-
-    def __init__(self, vista, file_path=Path(IMAGE_PATH, "stellar_cafe.png")):
-        super().__init__(vista, file_path)
-        self.steam_box_left = [236, 520, 262, 580]
-        self.steam_box_right = [423, 533, 450, 594]
-        self.left_mug = RNG.choice([True, False], 2)
-        self.right_mug = RNG.choice([True, False], 2)
-        self.steam = self.steam_cycle()
-
-    def generate_mug_steam(self):
-        """
-        Creates a snapshot of steam that rising from the mugs.
-        """
-        steam_left = flame_like_alpha(self.im.size, self.steam_box_left, *self.left_mug)
-        steam_right = flame_like_alpha(
-            self.im.size, self.steam_box_right, *self.right_mug
-        )
-        steam = ImageChops.lighter(steam_left, steam_right)
-        steaming = Image.new("RGBA", self.vista.size, "white")
-        steaming.putalpha(steam)
-        return steaming
-
-    def steam_cycle(self):
-        first_steaming = next_steaming = self.generate_mug_steam()
-        for n in range(self.vista.length - 12):
-            if n % 12 == 0:
-                prev_steaming, next_steaming = next_steaming, self.generate_mug_steam()
-            yield Image.blend(prev_steaming, next_steaming, (n % 12 / 12))
-        for n in range(12):
-            yield Image.blend(next_steaming, first_steaming, n / 12)
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the interior image over everything else in the frame, including animating
-        the steam pouring off of two hot beverages.
-        """
-        current_im = self.im.copy()
-        current_im.alpha_composite(next(self.steam))
-        image.alpha_composite(current_im)
-
-
-class Engineering(Interior):
-    """
-    A view through a heptagonal portal in engineering. Includes animations for various
-    readouts and the occasional flickering lighting effect.
-    """
-
-    def __init__(self, vista, file_path="engineering.png"):
-        super().__init__(vista, file_path)
-        self.osc_bg = self.vista.palette.get_color(hue=-1, shade=-2)
-        self.osc_shine = self.vista.palette.get_color(hue=-1, shade=1)
-        self.osc_fg0 = self.vista.palette.get_color(hue=-2, shade=0)
-        self.osc_fg1 = self.vista.palette.get_color(hue=2, shade=0)
-        self.osc_lines = self.vista.palette.get_color(hue=1, shade=1)
-        self.diagnostics = RNG.choice(["sins", "soothes"], p=[0.75, 0.25])
-
-    def activate_camera(self, file_path):
-        """
-        The method for assembling the film_strip of interior images and ensuring each
-        image matches the Vista's palette.
-        """
-        file_name, ext = file_path.split(".")
-        self.flicker = RNG.choice(["s-", "f-"], p=[0.8, 0.2])
-        self.film_strip = [
-            self.recolor(
-                Image.open(Path(IMAGE_PATH, f"{self.flicker}{file_name}{n}.{ext}"))
-            )
-            for n in range(4)
-        ]
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the interior image over everything else in the frame, advancing through
-        the film_strip at regular intervals. Includes drawing an animated oscilloscope
-        on top of everything else.
-        """
-        blink = frame_n % 96
-        if blink < 24:
-            op = RNG.choice([0, 1], p=[0.75, 0.25])
-            im = self.film_strip[op]
-        elif 48 <= blink < 72:
-            op = RNG.choice([2, 3], p=[0.75, 0.25])
-            im = self.film_strip[op]
-        else:
-            op = RNG.choice([1, 2], p=[0.75, 0.25])
-            im = self.film_strip[op]
-        # Oscilloscope
-        osc = Image.new("RGBA", (180, 180), (0, 0, 0, 0))
-        dr_osc = ImageDraw.Draw(osc)
-        dr_osc.ellipse(
-            [0, 0, 180, 180], fill=self.osc_bg, outline=self.osc_fg0, width=4
-        )
-        dr_osc.ellipse([108, 18, 144, 54], fill=self.osc_shine)
-        dr_osc.line([90, 0, 90, 180], fill=self.osc_lines)
-        dr_osc.line([0, 90, 180, 90], fill=self.osc_lines)
-        mask = osc.copy()
-        # xs = np.arange(180)
-        xs = np.linspace(0, 180, num=360, endpoint=False)
-        if self.diagnostics == "sins":
-            y0s = np.sin((xs - 90 + frame_n) * np.pi / 60) * 27 + 90
-            y1s = np.sin((xs - 90) * frame_n / 600 * np.pi) * 36 + 90
-            dr_osc.line(
-                [(x, y) for x, y in zip(xs, y0s)],
-                fill=self.osc_fg0,
-                width=2,
-                joint="curve",
-            )
-            lxs, ly1s = xs.tolist(), y1s.tolist()
-            dr_osc.point([(x, y) for x, y in zip(lxs, ly1s)], fill=self.osc_fg1)
-            dr_osc.point(
-                [(x, y) for x, y in zip(lxs[1:] + [lxs[0]], ly1s[1:] + [ly1s[0]])],
-                fill=self.osc_fg1,
-            )
-        elif self.diagnostics == "soothes":
-            y0s = np.sin(xs - 90 + (frame_n / 40 % 60)) * 27 + 90
-            y1s = np.sin((xs - 90) + (frame_n / 20 % 60)) * 36 + 90
-            dr_osc.point([(x, y) for x, y in zip(xs, y0s)], fill=self.osc_fg0)
-            dr_osc.point([(x, y) for x, y in zip(xs, y1s)], fill=self.osc_fg1)
-        im.paste(osc, box=(522, 18), mask=mask)
-
-        image.alpha_composite(im)
-
-## Helper Functions
-
-def flame_like_alpha(full_size, box, left_curl=False, whisp=False):
-    # Make some noise!
-    haze = Image.effect_noise(
-        [box[2] - box[0], box[3] - box[1]],
-        RNG.integers(290, 311),
-    )
-    x, y = haze.size
-    # Now let's shape that noise so it vaguely fits the silhouette of fire
-    drw_haze = ImageDraw.Draw(haze)
-    drw_haze.ellipse(
-        [x * left_curl - x // 2, -y / 8, x * left_curl + x // 2, y * 5 / 8],
-        "black",
-    )
-    if whisp:
-        drw_haze.ellipse(
-            [
-                x * (not left_curl) - x // 2,
-                y * 3 / 8,
-                x * (not left_curl) + x // 2,
-                y * 9 / 8,
-            ],
-            "black",
-        )
-    shifts = RNG.integers(-4, 5, 4)
-    mask = Image.new("L", haze.size, "black")
-    drw_mask = ImageDraw.Draw(mask)
-    drw_mask.ellipse(((0, 0) + haze.size + shifts).tolist(), 128)
-    flames = Image.new("L", full_size, color="black")
-    flames.paste(haze, box=box, mask=mask)
-    # Now spread it around and blur it!
-    flames = flames.effect_spread(3).filter(ImageFilter.GaussianBlur(3))
-    return flames
-
-
-def fog_like_alpha(full_size, box, color=None):
-    # Make some noise!
-    haze = Image.effect_noise(
-        [box[2] - box[0], box[3] - box[1]],
-        RNG.integers(290, 311),
-    )
-    haze = ImageChops.multiply(haze, haze)
-    rad = Image.radial_gradient("L").resize(haze.size)
-    haze = ImageChops.subtract(haze, rad)
-    # Now let's shape that noise
-    mask = Image.new("L", haze.size, 0)
-    drw_mask = ImageDraw.Draw(mask)
-    drw_mask.ellipse((0, 0) + haze.size, "white")
-    fog = Image.new("L", full_size, color="black")
-    fog.paste(haze, box=box, mask=mask)
-    fog = fog.effect_spread(60).filter(ImageFilter.GaussianBlur(5))
-    return fog
 
 
 def random_spacescape(length=1200):
