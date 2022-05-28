@@ -8,14 +8,12 @@ import numpy as np
 import pandas as pd
 import subprocess
 
-from collections import Counter
 from functools import partial, reduce
 from itertools import cycle
 from pathlib import Path
 from PIL import (
     Image,
     ImageChops,
-    ImageColor,
     ImageDraw,
     ImageFilter,
     ImageFont,
@@ -32,15 +30,12 @@ from palette.pasteller_palette import PastellerPalette
 # from palette.split_complementary import SplitComplementaryPalette
 # from palette.complementary_palette_16 import ComplementaryPalette16
 # from palette.mono_palette_16 import MonoPalette16
+from celestial_bodies.base_planet import BasePlanet
+from celestial_bodies.interior import Interior
+from celestial_bodies.star_field import StarField
 
 # Constants
-
 IMAGE_PATH = Path("visual")
-
-
-
-# So I don't have to figure this out every time I flip from screen to cartesian
-FLIP_Y = np.array([[1, 0], [0, -1]])
 
 # For when I just need a random number generator not tied to coordinates or
 # location on the ship. Or when I need to jump start another RNG
@@ -323,288 +318,6 @@ class Vista:
         )
 
 
-class CelestialBody:
-    """
-    The parent class of all layers to your vista.
-    """
-
-    def __init__(self, vista):
-        self.vista = vista
-        self.layer, self.velocity = self.vista.add_celestial_body(self)
-
-    def screen_to_cart(self, xy):
-        """
-        Assumes `xy` is an array-like object representing the vector [x, y] in
-        screen coordinates where the origin is at the top-left corner of the screen
-        and positive y goes down.
-
-        Returns a numpy array representing the vector [x, y] in Cartesian coordinates
-        where the origin is at the middle of the screen and positive y goes up.
-        """
-        return (xy - self.vista.center) @ FLIP_Y
-
-    def cart_to_screen(self, xy):
-        """
-        Assumes `xy` is an array-like object representing the vector [x, y] in
-        Cartesian coordinates where the origin is at the middle of the screen
-        and positive y goes up.
-
-        Returns a numpy array representing the vector [x, y] in screen coordinates
-        where the origin is at the top-left corner of the screen and positive y
-        goes down.
-        """
-        return xy @ FLIP_Y + self.vista.center
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Called by the Vista when it comes time to draw a frame of the animated gif.
-        """
-        pass
-
-    def drift(self, xy, velocity, frame_n):
-        """
-        Takes in a vector of screen coordinates `xy`.
-
-        Returns new screen coordinates that assure an Atari wrap-around situation.
-        """
-        # Transform screen coordinates to Cartesian because we're not barbarians here.
-        xy = self.screen_to_cart(xy)
-        # Our rocket runs on that sweet, sweet linear algebra.
-        nudge_matrix = self.vista.rot_matrix @ (velocity * frame_n * np.array([1, 0]))
-        xy = xy - nudge_matrix
-        # Mirroring body so it is at both ends of the journey
-        return self.parallel_worlds(xy, velocity)  # self.atari(xy, velocity)
-
-    def parallel_worlds(self, xy, velocity):
-        """
-        Determines where the CelestialBody will be self.vista.length frames into
-        the future and into the past so that possible gaps don't appear in the
-        animation.
-
-        Returns present location, past location, future location.
-        """
-        mirror_vector = self.vista.length * velocity * np.array([1, 0])
-        mirror_xy = xy - self.vista.rot_matrix @ mirror_vector
-        parallel_xy = xy + self.vista.rot_matrix @ mirror_vector
-        return (
-            self.cart_to_screen(xy),
-            self.cart_to_screen(mirror_xy),
-            self.cart_to_screen(parallel_xy),
-        )
-
-    def set_course(self, xy):
-        """
-        Rotates xy cordinates around the center of the frame so that they are
-        guaranteed to be within the path of the spacecraft.
-
-
-        Returns the rotated xy as screen coordinates.
-        """
-        return self.cart_to_screen(
-            self.vista.rot_matrix @ self.screen_to_cart(np.array(xy))
-        )
-
-
-class StarField(CelestialBody):
-    """
-    The standard backdrop for the Vista. A randomly generated field of stars
-    """
-
-    def __init__(self, vista, n_stars=500):
-        super().__init__(vista)
-        self.velocity /= 3
-        hypotenuse = np.ceil(np.sqrt(self.vista.width ** 2 + self.vista.height ** 2))
-        self.leeway = (hypotenuse - self.vista.height) // 2
-        self.traverse = self.vista.length * self.velocity
-        self.fieldsize = self.traverse * hypotenuse
-        self.star_map = self.let_there_be_light(n_stars)
-        self.vista.status_dict["star density"] = self.n_stars / self.fieldsize
-        print(f"Star density = {self.vista.status_dict['star density']}")
-
-    def let_there_be_light(self, stars):
-        """
-        Generates a field of stars along the starship's course given either the number
-        of stars or the density.
-
-        Returns a pd.DataFrame with the starting xy in screen coordinates & rgb colors.
-        """
-        if stars >= 1:
-            n_stars = int(stars)
-        elif 0 <= stars < 1:
-            n_stars = int(self.fieldsize * stars)
-        else:
-            raise ValueError("`stars` must be an integer >= 1 or a float [0,1)")
-        print(f"Generating {n_stars} stars…")
-        # Create a DataFrame of all the star locations
-        star_map = pd.DataFrame(
-            self.vista.coords.integers(
-                0, self.vista.length * self.velocity, n_stars, endpoint=True
-            ),
-            columns=["x"],
-        )
-        star_map["y"] = self.vista.coords.integers(
-            -1 * self.leeway, self.vista.height + self.leeway, n_stars, endpoint=True
-        )
-        # Remove duplicates and get the actual number of stars
-        star_map.drop_duplicates(inplace=True, ignore_index=True)
-        self.n_stars = len(star_map)
-        # Assign initial color to each star, favoring 'brighter' colors
-        star_map["rgb"] = (
-            self.vista.palette.palette.iloc[:, 0]
-            .sample(n=len(star_map), replace=True)
-            .reset_index(drop=True)
-        )
-        # Create a buffer of duplicate stars on either end of the map so that gaps
-        # in the starfield aren't created by rotations and other manipulations.
-        full_scroll = star_map.copy()
-        for zone in [-self.traverse, self.traverse, 2 * self.traverse]:
-            buffer = star_map.copy()
-            buffer.iloc[:, 0] = buffer["x"] + zone
-            full_scroll = full_scroll.append(buffer, ignore_index=True)
-        # Put the stars on our path.
-        full_scroll["xy"] = full_scroll[["x", "y"]].apply(self.set_course, axis=1)
-        return full_scroll
-
-    def parallel_worlds(self, xy, velocity):
-        """
-        Bypasses the paralleling, which would be reduntant in this case.
-        """
-        return self.cart_to_screen(xy)
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the Starfield on the frame.
-        """
-
-        def star_drift(row):
-            """
-            A little helper function to combine the 'x' and 'y' columns of
-            self.star_map into a single column of vectors [x,y] and then run
-            them through the drift.
-            """
-            xy = row.array[0]
-            return self.drift(xy, velocity=self.velocity, frame_n=frame_n)
-
-        self.star_map["drift"] = self.star_map[["xy"]].apply(star_drift, axis=1)
-
-        for xy, rgb in self.star_map[["drift", "rgb"]].itertuples(
-            index=False, name=None
-        ):
-            drawing_frame.point(tuple(xy), fill=(*rgb, 255))
-
-
-class BasePlanet(CelestialBody):
-    """
-    A basic class to subclass other planets from.
-    """
-
-    def __init__(self, vista, distance):
-        super().__init__(vista)
-        self.distance = distance
-        self.is_planetoid = True
-        self.velocity *= 1 + self.layer / self.distance
-        print(f"velocity={self.velocity} distance={self.distance} layer={self.layer}")
-        self.mass = int(
-            self.vista.coords.triangular(
-                4, self.vista.height / self.distance, self.vista.height / np.sqrt(2)
-            )
-            + self.layer
-        )
-        self.height = self.width = self.mass
-        self.sys_height = self.sys_width = self.mass + 4
-
-        self.hue = self.vista.coords.integers(self.vista.palette.hue_depth)
-        self.shade = self.vista.coords.integers(self.vista.palette.shade_depth)
-        self.fill = self.vista.palette.get_color(self.hue, self.shade)
-        self.colorful = self.vista.coords.choice([True, False], p=[0.2, 0.8])
-        # tilt_from_x rotates the image on the x,y plane
-        self.tilt_from_x = self.vista.coords.normal(self.vista.orbital_plane, 30)
-        # tilt_from_y rotates the Rings and Satelite features on the y.z plane
-        self.tilt_from_y = self.vista.coords.integers(-45, 46)
-        # Spin determines which way around the plaent the satellite orbits
-        self.spin = self.vista.coords.choice([-1, 1])
-        self.vista.status_dict[f"Planet {self.layer}"] = Counter()
-        self.features = self.generate_features()
-        self.im = self.planetary_formation()
-        # Reset sys_dimensions to match reality after rotation
-        self.sys_width, self.sys_height = self.im.size
-        # Initial position of the planet in the field of stars
-        x = self.vista.coords.integers(0, self.vista.length * self.velocity)
-        y = self.vista.coords.normal(self.vista.height // 2, self.vista.height // 4)
-        self.x, self.y = self.set_course((x + self.sys_width // 2, y)) - [
-            self.sys_width // 2,
-            self.sys_height // 2,
-        ]
-
-    def generate_features(self):
-        """
-        A placeholder for other planet classes that will have features.
-
-        Returns an empty list.
-        """
-        return []
-
-    def planetary_formation(self):
-        """
-        Creates an image of the planet, including all the features that do not move
-        with respect to the planet itself.
-
-        Returns an PIL.Image of the planet and its static features
-        """
-        self.sys_width = int(
-            max([feature.sys_width for feature in self.features + [self]])
-        )
-        self.sys_height = int(
-            max([feature.sys_height for feature in self.features + [self]])
-        )
-        sys_im = Image.new("RGBA", (self.sys_width, self.sys_height), (0, 0, 0, 0))
-        # Create the planet_mask here and then...
-        planet_mask = sys_im.copy()
-        center = np.array((self.sys_width, self.sys_height)) // 2
-        draw_sys = ImageDraw.Draw(sys_im)
-        draw_mask = ImageDraw.Draw(planet_mask)
-        for feature in self.features:
-            feature.background(center, sys_im, draw_sys)
-        draw_sys.ellipse(
-            (center - self.mass // 2).tolist() + (center + self.mass // 2).tolist(),
-            fill=(*self.fill, 255),
-        )
-        # ...draw on it here so you're only masking the planet.
-        draw_mask.ellipse(
-            (center - self.mass // 2).tolist() + (center + self.mass // 2).tolist(),
-            fill=(*self.fill, 255),
-        )
-        for feature in self.features:
-            feature.foreground(center, sys_im, draw_sys, planet_mask)
-        sys_im = sys_im.rotate(
-            self.tilt_from_x,
-            resample=Image.BICUBIC,
-            expand=True,
-            center=(self.sys_width // 2, self.sys_height // 2),
-            fillcolor=(0, 0, 0, 0),
-        )
-        return sys_im
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the planet and its features on a frame of the animated gif.
-        """
-        planetary_systems = self.drift(
-            np.array([self.x, self.y]),
-            velocity=self.velocity,
-            frame_n=frame_n,
-        )
-        # Goes through all the dynamic features of the planet and draws them so that
-        # those that drift behind the planet are occluded and those that drift in front
-        # are not.
-        for x, y in planetary_systems:
-            for feature in self.features:
-                feature.drifting_background(x, y, image, drawing_frame, frame_n)
-            image.paste(self.im, (int(x), int(y)), mask=self.im)
-            for feature in self.features:
-                feature.drifting_foreground(x, y, image, drawing_frame, frame_n)
-
-
 class RandomPlanet(BasePlanet):
     """
     The standard planet.
@@ -641,59 +354,6 @@ class RandomPlanet(BasePlanet):
             features.append(SatelliteCluster(self))
         return features
 
-class Interior(CelestialBody):
-    """
-    The base class for an interior. Can be used for any interior that has no animated
-    elements. Otherwise subclassed for an animate interior
-    """
-
-    def __init__(self, vista, file_path, invert_colors=False):
-        super().__init__(vista)
-        self.bgr = RNG.permutation(range(3))
-        if invert_colors:
-            self.invert_color = RNG.integers(2, size=3)
-        else:
-            self.invert_color = (0, 0, 0)
-        self.activate_camera(file_path)
-
-    def activate_camera(self, file_path):
-        """
-        A catch-all method for the image processing and setup done to the interior's
-        image file(s) before drawing. In this base class it just recolors the image.
-        """
-        self.im = self.recolor(Image.open(file_path))
-
-    def recolor(self, im):
-        """
-        This method takes the interior's image and recolors it to match the palette
-        of the rest of the Vista.
-
-        Returns recolored PIL.image
-        """
-        # Convert image to RGB mode so we can quantize the colors to the palette.
-        *rgb, a = im.split()
-        reorder = []
-        for i, c in zip(self.invert_color, self.bgr):
-            if i:
-                reorder.append(ImageChops.invert(rgb[c]))
-            else:
-                reorder.append(rgb[c])
-        recolor_im = Image.merge("RGB", reorder)
-        recolor_im = recolor_im.quantize(
-            colors=32,
-            palette=self.vista.palette.get_image(),
-            method=Image.FASTOCTREE,
-            dither=0,
-        )
-        # Convert back and re-establish the alpha channel through some hoops
-        im = Image.merge("RGBA", (*recolor_im.convert("RGB").split(), a))
-        return im
-
-    def draw(self, image, drawing_frame, frame_n):
-        """
-        Draws the interior image over everything else in the frame.
-        """
-        image.alpha_composite(self.im)
 
 
 class AstroGarden(Interior):
@@ -1044,12 +704,12 @@ def rot_m(bearing):
     )
 
 
-def c2s(xy):
-    return tuple(xy @ FLIP_Y + np.array([200, 200]))
+# def c2s(xy):
+#     return tuple(xy @ FLIP_Y + np.array([200, 200]))
 
 
-def s2c(xy):
-    return tuple((xy - np.array([200, 200])) @ FLIP_Y)
+# def s2c(xy):
+#     return tuple((xy - np.array([200, 200])) @ FLIP_Y)
 
 
 def testers():
